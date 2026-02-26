@@ -13,11 +13,73 @@ Data Structure (The Schemas):
 I designed these schemas to keep the data clean and searchable:
 
 Membership Intake:
-firstName & lastName: String, Required.
-email: String, Required, Unique (so we don't get duplicates).
-phone: String, Required (I use Regex to make sure it's 000-000-0000 format).
-industry: String, Required, Indexed (this makes searching by industry way faster).
-status: String, Defaults to 'Pending' until the admin approves them.
+  {
+        category:
+        {
+            type: String,
+            default: "applicants",
+        },
+        name:
+        {
+            type: String,
+            required: true,
+    
+        },
+        email:
+        {
+            type: String,
+            unique: true,
+            required: true,
+            index: true,
+        },
+
+        phone:
+        {
+            type: String,
+            unique: true,
+            required: true,
+        },
+
+        dob:
+        {
+            type: Date,
+            required: true,
+        },
+        industry:
+        {
+            type: String,
+            required: true,
+            index: true,
+
+        },
+        tier:
+            { 
+                type: String,
+                enum: ["Platinum", "Gold", "Silver"],
+                default: "Silver",
+            },
+
+        status:
+            { 
+                type: String,
+                enum: ["accepted", "pending"],
+                default: "pending"
+            },
+
+        isFirstTimeFounder:
+            { 
+                type: Boolean, 
+                default: false,    
+            },
+
+        submittedAt: 
+        { 
+            type: Date, 
+            default: Date.now 
+        }
+
+    });
+
 
 Intentional Dinner Conversations:
 memberID: Links the dinner sign-up to a specific user in the database.
