@@ -29,3 +29,5 @@ POST: This is how my signup forms and dinner forms send data to the database.
 GET: I use this to pull all the applicants into the Admin Dashboard so they can be reviewed.
 PUT: This allows me to actually change a member's status from 'Pending' to 'Approved.'
 DELETE: A way for the admin to remove old or incorrect records.
+
+We will use SBA 319 for the Schema and intake form.
