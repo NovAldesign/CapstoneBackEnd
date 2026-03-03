@@ -2,39 +2,41 @@ import mongoose from "mongoose";
 
 const adminSchema = new mongoose.Schema(
     {
-        name:
-        {
+        name: {
             type: String,
             required: true,
         },
-        email:
-        {
+        email: {
             type: String,
             unique: true,
             required: true,
             index: true,
         },
-        role:
-        {
+        role: {
             type: String,
-            enum: ["admin", "moderator"]
-         
+            enum: ["Admin", "Moderator"],
+            default: "Moderator",
         },
-
-        status:
-        {
+        accessKey: {
             type: String,
-            enum: ["accepted", "pending"],
-            default: "pending",
+            required: true,
         },
+        lastAction: {
+            type: String,
+        },
+        lastLoginIp: { 
+            type: String,
+        },
+        status: {
+            type: String,
+            default: "active",
+        }
+    }, 
+    { timestamps: true } 
+);
+
+export default mongoose.model("Admin", adminSchema);
 
 
 
-
-        name: "Jordan Hayes",
-        email: "j.hayes@gfc-ops.com",
-        role: "Admin",
-        accessKey: "GFC_EXEC_2026",
-        lastAction: "Approved Gold Member",
-        lastLoginIp: "72.14.213.44",
-        status: "active"
+      
