@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import bcrypt from "bcrypt";
 
 const adminSchema = new mongoose.Schema(
     {
@@ -11,6 +12,10 @@ const adminSchema = new mongoose.Schema(
             unique: true,
             required: true,
             index: true,
+        },
+        password: {
+            type: String,
+            required: true,
         },
         role: {
             type: String,
@@ -34,6 +39,26 @@ const adminSchema = new mongoose.Schema(
     }, 
     { timestamps: true } 
 );
+
+// --- PASSWORD ENCRYPTION LOGIC ---
+
+adminSchema.pre("save", async function () { 
+    if (!this.isModified("password")) return;
+
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+        console.log(`🔐 Hashing password for: ${this.name}`);
+    } catch (err) {
+        // In async hooks, you can just throw the error
+        throw err; 
+    }
+});
+
+// 2. This helper method is used during login to check if a password is correct
+adminSchema.methods.comparePassword = async function (candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
+};
 
 export default mongoose.model("Admin", adminSchema);
 

@@ -254,8 +254,9 @@ export const adminData = [
     {
         name: "User Admin",
         email: "admin@grownfolkscollective.com",
+        password: "Admin_Secure_99!", 
         role: "Admin",
-        accessKey: "GFC_SECURE_99",
+        accessKey: "GFC_EXEC_2026",
         lastAction: "System Initialization",
         lastLoginIp: "192.168.1.1",
         status: "active"
@@ -263,6 +264,7 @@ export const adminData = [
     {
         name: "Jordan Hayes",
         email: "j.hayes@gfc-ops.com",
+        password: "Jordan_GFC_2026",
         role: "Admin",
         accessKey: "GFC_EXEC_2026",
         lastAction: "Approved Gold Member",
@@ -272,6 +274,7 @@ export const adminData = [
     {
         name: "Morgan Reed",
         email: "m.reed@gfc-staff.com",
+        password: "Morgan_Staff_GFC",
         role: "Moderator",
         accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Flagged non-compliant sponsor",
@@ -281,6 +284,7 @@ export const adminData = [
     {
         name: "Sloane Rivers",
         email: "s.rivers@gfc-staff.com",
+        password: "Sloane_Staff_GFC",
         role: "Moderator",
         accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Updated event calendar",
@@ -290,8 +294,9 @@ export const adminData = [
     {
         name: "Casey Blair",
         email: "c.blair@gfc-ops.com",
+        password: "Casey_Secure_88!",
         role: "Admin",
-        accessKey: "GFC_SECURE_88",
+        accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Reviewed contract end dates",
         lastLoginIp: "172.58.12.99",
         status: "active"
