@@ -56,3 +56,8 @@ Configure .env: Add your MONGO_URI and ADMIN_KEY.
 Seed the database: Run GET /api/seed-all to populate initial GFC data.
 
 Start the server: npm run dev
+
+## 🖥️ Frontend Repository
+The user interface for the Grown Folks Collective is built with **React** and **Vite**. You can find the frontend code, including the Admin Dashboard and Membership Intake forms, at the link below:
+
+👉 **[GFC Frontend Repository] https://github.com/NovAldesign/CapstoneFrontEnd.git
