@@ -15,7 +15,11 @@ const adminSchema = new mongoose.Schema(
         },
         password: {
             type: String,
-            required: true,
+            required: [true, 'Password is required'],
+            match: [
+                /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+                'Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character.'
+            ]
         },
         role: {
             type: String,
@@ -29,20 +33,20 @@ const adminSchema = new mongoose.Schema(
         lastAction: {
             type: String,
         },
-        lastLoginIp: { 
+        lastLoginIp: {
             type: String,
         },
         status: {
             type: String,
             default: "active",
         }
-    }, 
-    { timestamps: true } 
+    },
+    { timestamps: true }
 );
 
 // --- PASSWORD ENCRYPTION LOGIC ---
 
-adminSchema.pre("save", async function () { 
+adminSchema.pre("save", async function () {
     if (!this.isModified("password")) return;
 
     try {
@@ -51,7 +55,7 @@ adminSchema.pre("save", async function () {
         console.log(`🔐 Hashing password for: ${this.name}`);
     } catch (err) {
         // In async hooks, you can just throw the error
-        throw err; 
+        throw err;
     }
 });
 
@@ -64,4 +68,3 @@ export default mongoose.model("Admin", adminSchema);
 
 
 
-      

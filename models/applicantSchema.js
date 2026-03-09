@@ -1,71 +1,106 @@
 import mongoose from "mongoose";
+import bcrypt from "bcrypt";
 
 const applicantSchema = new mongoose.Schema(
     {
-        category:
-        {
-            type: String,
-            default: "applicants",
-        },
-        name:
-        {
+        // Demographics
+        firstName: {
             type: String,
             required: true,
-    
         },
-        email:
-        {
+        lastName: {
+            type: String,
+            required: true, 
+        },
+        email: {
             type: String,
             unique: true,
             required: true,
             index: true,
         },
-
-        phone:
-        {
+        phone: {
             type: String,
             unique: true,
             required: true,
         },
-
-        dob:
-        {
+        dob: {
             type: Date,
             required: true,
         },
-        industry:
-        {
+        industry: {
             type: String,
             required: true,
             index: true,
-
         },
-        tier:
-            { 
+        // Security
+        password: {
+            type: String,
+            required: [true, 'Password is required'],
+            match: [
+                /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+                'Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character.'
+            ]
+        },
+        // Membership status
+        tier: {
+            type: String,
+            enum: ["Platinum", "Gold", "Silver"],
+            default: "Silver",
+        },
+        status: {
+            type: String,
+            enum: ["accepted", "pending", "waitlisted"],
+            default: "pending"
+        },
+        // Connection Metrics 
+        connectionGoals: {
+            socialSatisfaction: { type: Number, min: 1, max: 10 },
+            primaryInterest: {
                 type: String,
-                enum: ["Platinum", "Gold", "Silver"],
-                default: "Silver",
+                enum: ['Meet New People', 'Play/Games', 'Travel', 'Local Events']
             },
-
-        status:
-            { 
-                type: String,
-                enum: ["accepted", "pending"],
-                default: "pending"
-            },
-
-        isFirstTimeFounder:
-            { 
-                type: Boolean, 
-                default: false,    
-            },
-
-        submittedAt: 
-        { 
+            isolationBarrier: String,
+        },
+        // Logistics for experiences
+        preferences: {
+            dietaryRestrictions: [String],
+            apparelSize: { type: String, enum: ['S', 'M', 'L', 'XL', '2XL', '3XL'] },
+            favoriteMocktail: String,
+            golfSkillLevel: { type: String, enum: ['Beginner', 'Intermediate', 'Advanced', 'Never Played'] }
+        },
+        // Travel 
+        hasPassport: { type: Boolean, default: false },
+        emergencyContact: {
+            name: String,
+            phone: String,
+            relationship: String
+        },
+        submittedAt: { 
             type: Date, 
             default: Date.now 
         }
+    }
+);
 
-    });
+// --- PASSWORD ENCRYPTION LOGIC ---
+
+applicantSchema.pre("save", async function (next) {
+    if (!this.isModified("password")) return next();
+
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+       
+        console.log(`🔐 Hashing password for: ${this.firstName}`);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Helper method for login
+applicantSchema.methods.comparePassword = async function (candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
+};
 
 export default mongoose.model("Applicants", applicantSchema);
