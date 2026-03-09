@@ -350,294 +350,122 @@ export const adminData = [
     {
         name: "User Admin",
         email: "admin@grownfolkscollective.com",
-        password: "Admin_Secure_99!", 
+        password: "GfcAdmin2026!", 
         role: "Admin",
         accessKey: "GFC_EXEC_2026",
         lastAction: "System Initialization",
         lastLoginIp: "192.168.1.1",
         status: "active",
-        // Adding preferences to match the unified schema requirements
-        preferences: {
-            apparelSize: "XL",
-            golfSkillLevel: "Advanced"
-        }
+        preferences: { apparelSize: "XL", golfSkillLevel: "Advanced" }
     },
     {
         name: "Jordan Hayes",
         email: "j.hayes@gfc-ops.com",
-        password: "Jordan_GFC_2026!", // Added ! for Regex compliance
+        password: "JordanGfc2026!",
         role: "Admin",
         accessKey: "GFC_EXEC_2026",
         lastAction: "Approved Gold Member",
         lastLoginIp: "72.14.213.44",
         status: "active",
-        preferences: {
-            apparelSize: "L",
-            golfSkillLevel: "Intermediate"
-        }
+        preferences: { apparelSize: "L", golfSkillLevel: "Intermediate" }
     },
     {
         name: "Morgan Reed",
         email: "m.reed@gfc-staff.com",
-        password: "Morgan_Staff_GFC1!", // Added 1! for Regex compliance
+        password: "MorganStaff2026!",
         role: "Moderator",
         accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Flagged non-compliant sponsor",
         lastLoginIp: "104.16.44.12",
         status: "active",
-        preferences: {
-            apparelSize: "M",
-            golfSkillLevel: "Beginner"
-        }
+        preferences: { apparelSize: "M", golfSkillLevel: "Beginner" }
     },
     {
         name: "Sloane Rivers",
         email: "s.rivers@gfc-staff.com",
-        password: "Sloane_Staff_GFC2!", // Added 2! for Regex compliance
+        password: "SloaneStaff2026!",
         role: "Moderator",
         accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Updated event calendar",
         lastLoginIp: "68.33.112.05",
         status: "active",
-        preferences: {
-            apparelSize: "S",
-            golfSkillLevel: "Never Played"
-        }
+        preferences: { apparelSize: "S", golfSkillLevel: "Never Played" }
     },
     {
         name: "Casey Blair",
         email: "c.blair@gfc-ops.com",
-        password: "Casey_Secure_88!",
+        password: "CaseyAdmin2026!",
         role: "Admin",
         accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Reviewed contract end dates",
         lastLoginIp: "172.58.12.99",
         status: "active",
-        preferences: {
-            apparelSize: "L",
-            golfSkillLevel: "Intermediate"
-        }
+        preferences: { apparelSize: "L", golfSkillLevel: "Intermediate" }
     }
 ];
 export const partnershipData = [
-    {
-        companyName: "Nexus Wealth Management",
-        industry: "Finance",
-        tierRequested: "Title Sponsor",
-        contributionType: "Financial",
-        details: "$15,000 sponsorship for the Annual Entrepreneur Gala",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Ascent Air Charters",
-        industry: "Luxury Travel",
-        tierRequested: "Founding Partner",
-        contributionType: "Service",
-        details: "Private jet credits for keynote speakers and VIP members",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Veridian Law Group",
-        industry: "Legal",
-        tierRequested: "In-Kind Donor",
-        contributionType: "Service",
-        details: "20 hours of complimentary business strategy and IP consulting",
-        missionAligned: true,
-        contractStart: "2026-04-01",
-        contractEnd: "2027-04-01",
-        status: "pending"
-    },
-    {
-        companyName: "Azure Health Tech",
-        industry: "Healthcare",
-        tierRequested: "Title Sponsor",
-        contributionType: "Financial",
-        details: "Covering full venue costs for the Q3 Tech Summit",
-        missionAligned: true,
-        contractStart: "2026-06-01",
-        contractEnd: "2027-06-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Luxe Retreats Co.",
-        industry: "Hospitality",
-        tierRequested: "Founding Partner",
-        contributionType: "Venue",
-        details: "Hosting the 35+ Founder Retreat at their Tulum property",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2026-12-31",
-        status: "accepted"
-    },
-    {
-        companyName: "Stellar CRM",
-        industry: "Software",
-        tierRequested: "In-Kind Donor",
-        contributionType: "Product",
-        details: "Free Enterprise-tier CRM access for Founding Members",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "pending"
-    },
-    {
-        companyName: "Summit Real Estate",
-        industry: "Real Estate",
-        tierRequested: "Title Sponsor",
-        contributionType: "Venue",
-        details: "Access to downtown penthouse for monthly mastermind sessions",
-        missionAligned: true,
-        contractStart: "2026-05-01",
-        contractEnd: "2026-11-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Peak Performance Labs",
-        industry: "Wellness",
-        tierRequested: "In-Kind Donor",
-        contributionType: "Product",
-        details: "Health optimization kits for retreat attendees",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "declined"
-    },
-    {
-        companyName: "Global Venture Partners",
-        industry: "Venture Capital",
-        tierRequested: "Title Sponsor",
-        contributionType: "Financial",
-        details: "$20,000 for the 'Pitch the Collective' event prize pool",
-        missionAligned: true,
-        contractStart: "2026-07-01",
-        contractEnd: "2027-07-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Elysian Marketing",
-        industry: "Marketing",
-        tierRequested: "In-Kind Donor",
-        contributionType: "Service",
-        details: "Full SEO audit and branding strategy for GFC platform",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2026-09-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Core Logistics",
-        industry: "Shipping",
-        tierRequested: "Title Sponsor",
-        contributionType: "Financial",
-        details: "Sponsoring the Founder’s Breakfast series for one year",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "pending"
-    },
-    {
-        companyName: "Horizon Suites",
-        industry: "Hospitality",
-        tierRequested: "Founding Partner",
-        contributionType: "Venue",
-        details: "Dedicated co-working floor for GFC members in Atlanta",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2028-03-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Prism Security",
-        industry: "Cybersecurity",
-        tierRequested: "In-Kind Donor",
-        contributionType: "Service",
-        details: "Security audits for member business websites",
-        missionAligned: true,
-        contractStart: "2026-04-01",
-        contractEnd: "2027-04-01",
-        status: "pending"
-    },
-    {
-        companyName: "Atlas Accounting",
-        industry: "Finance",
-        tierRequested: "In-Kind Donor",
-        contributionType: "Service",
-        details: "Tax strategy workshops for high-revenue founders",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Nova Creative Agency",
-        industry: "Media",
-        tierRequested: "Title Sponsor",
-        contributionType: "Service",
-        details: "Professional headshots and video bios for members",
-        missionAligned: true,
-        contractStart: "2026-05-15",
-        contractEnd: "2026-12-15",
-        status: "pending"
-    },
-    {
-        companyName: "Beacon Financial Group",
-        industry: "Insurance",
-        tierRequested: "Founding Partner",
-        contributionType: "Financial",
-        details: "$12,000 support for the 35+ Professional Network app",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Skyline Creative Spaces",
-        industry: "Real Estate",
-        tierRequested: "Title Sponsor",
-        contributionType: "Venue",
-        details: "Hosting the winter networking gala in their private loft",
-        missionAligned: true,
-        contractStart: "2026-11-01",
-        contractEnd: "2027-01-01",
-        status: "pending"
-    },
-    {
-        companyName: "Urban Wellness Suites",
-        industry: "Wellness",
-        tierRequested: "In-Kind Donor",
-        contributionType: "Product",
-        details: "1-year memberships to the executive recovery lounge",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Velocity Tech",
-        industry: "Technology",
-        tierRequested: "Title Sponsor",
-        contributionType: "Financial",
-        details: "Sponsoring the 'Faceless Content' Masterclass series",
-        missionAligned: true,
-        contractStart: "2026-04-01",
-        contractEnd: "2026-08-01",
-        status: "accepted"
-    },
-    {
-        companyName: "Zenith Executive Coaching",
-        industry: "Education",
-        tierRequested: "In-Kind Donor",
-        contributionType: "Service",
-        details: "One-on-one leadership coaching for the top 5 founders",
-        missionAligned: true,
-        contractStart: "2026-03-01",
-        contractEnd: "2027-03-01",
-        status: "pending"
-    }
+  {
+    companyName: "Atlanta Tech Village",
+    industry: "Real Estate / Tech Hub",
+    contactPerson: "David Cummings",
+    email: "david@atlantatechvillage.com",
+    phone: "404-555-9000",
+    password: "PartnerSecure2026!",
+    tier: "Founding Partner",
+    contributionType: "Venue",
+    contractStart: "2026-01-01",
+    contractEnd: "2026-12-31",
+    status: "active"
+  },
+  {
+    companyName: "Porsche Experience Center",
+    industry: "Luxury Automotive",
+    contactPerson: "Sarah Klaus",
+    email: "s.klaus@porsche-atl.com",
+    phone: "770-555-1911",
+    password: "PorscheGfc2026!",
+    tier: "Title Sponsor",
+    contributionType: "Financial",
+    contractStart: "2026-03-01",
+    contractEnd: "2026-04-01", 
+  },
+  {
+    companyName: "The Gathering Spot",
+    industry: "Private Clubs",
+    contactPerson: "Ryan Wilson",
+    email: "ryan@thegatheringspot.com",
+    phone: "404-555-2020",
+    password: "TgsPartner2026!",
+    tier: "In-Kind Donor",
+    contributionType: "Service",
+    contractStart: "2026-02-15",
+    contractEnd: "2027-02-15",
+    status: "active"
+  },
+  {
+    companyName: "Savannah Golf Club",
+    industry: "Hospitality / Sports",
+    contactPerson: "Michael Vance",
+    email: "mvance@savannahgolf.com",
+    phone: "912-555-4653",
+    password: "GolfGfc2026!",
+    tier: "Title Sponsor",
+    contributionType: "Venue",
+    contractStart: "2026-01-10",
+    contractEnd: "2026-03-20", // Already needs renewal
+    status: "active"
+  },
+  {
+    companyName: "Coca-Cola (Global Headquarters)",
+    industry: "Beverage",
+    contactPerson: "James Quincey",
+    email: "jquincey@coca-cola.com",
+    phone: "404-555-1000",
+    password: "CokeGfc2026!",
+    tier: "Founding Partner",
+    contributionType: "Product",
+    contractStart: "2026-04-01",
+    contractEnd: "2027-04-01",
+    status: "pending"
+  }
 ];
