@@ -1,253 +1,349 @@
 export const applicantData = [
-    {
-        name: "Zara Vance",
-        email: "zvance@devops.com",
-        phone: "512-555-0654",
-        dob: "1988-05-12",
-        industry: "Technology",
-        tier: "Silver",
-        status: "accepted",
-        isFirstTimeFounder: true
+  {
+    firstName: "Marcus",
+    lastName: "Bennett",
+    email: "m.bennett@techflow.io",
+    password: "Password123!", 
+    phone: "404-555-0101",
+    dob: "1985-06-15",
+    industry: "Software Engineering",
+    tier: "Platinum",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 4,
+      primaryInterest: "Play/Games",
+      isolationBarrier: "Recent move to Atlanta and heavy remote work schedule."
     },
-    {
-        name: "Quinn Sullivan",
-        email: "qsullivan@finadvisors.com",
-        phone: "415-555-0155",
-        dob: "1975-11-20",
-        industry: "Finance",
-        tier: "Gold",
-        status: "pending",
-        isFirstTimeFounder: false
+    preferences: {
+      dietaryRestrictions: ["None"],
+      apparelSize: "L",
+      favoriteMocktail: "Spicy Ginger Mule",
+      golfSkillLevel: "Intermediate"
     },
-    {
-        name: "Dr. Simon Glass",
-        email: "sglass@surgery.edu",
-        phone: "617-555-0321",
-        dob: "1982-03-04",
-        industry: "Healthcare",
-        tier: "Platinum",
-        status: "accepted",
-        isFirstTimeFounder: false
+    hasPassport: true
+  },
+  {
+    firstName: "Elena",
+    lastName: "Rodriguez",
+    email: "elena.design@studio.com",
+    password: "GfcSecure2026!",
+    phone: "404-555-0102",
+    dob: "1988-11-22",
+    industry: "Architecture",
+    tier: "Gold",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 6,
+      primaryInterest: "Local Events",
+      isolationBarrier: "Work-life balance; often in the studio late."
     },
-    {
-        name: "Miles Edgeworth",
-        email: "miles@prosecution.gov",
-        phone: "213-555-0678",
-        dob: "1992-09-14",
-        industry: "Legal",
-        tier: "Gold",
-        status: "pending",
-        isFirstTimeFounder: true
+    preferences: {
+      dietaryRestrictions: ["Vegetarian"],
+      apparelSize: "S",
+      favoriteMocktail: "Cucumber Mint Refresher",
+      golfSkillLevel: "Beginner"
     },
-    {
-        name: "Caleb Vance",
-        email: "cvance@brokerage.com",
-        phone: "702-555-0111",
-        dob: "1985-07-22",
-        industry: "Real Estate",
-        tier: "Gold",
-        status: "accepted",
-        isFirstTimeFounder: true
+    hasPassport: true
+  },
+  {
+    firstName: "Julian",
+    lastName: "Thorne",
+    email: "j.thorne@equitypartners.com",
+    password: "SecureUser88!",
+    phone: "678-555-0103",
+    dob: "1982-03-09",
+    industry: "Finance",
+    tier: "Platinum",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 3,
+      primaryInterest: "Travel",
+      isolationBarrier: "Hard to find people who want to travel without networking being the focus."
     },
-    {
-        name: "Elena Fischer",
-        email: "efischer@hedge.com",
-        phone: "203-555-0442",
-        dob: "1990-01-30",
-        industry: "Finance",
-        tier: "Gold",
-        status: "pending",
-        isFirstTimeFounder: false
+    preferences: {
+      dietaryRestrictions: ["Gluten-Free"],
+      apparelSize: "XL",
+      favoriteMocktail: "Botanical Tonic",
+      golfSkillLevel: "Advanced"
     },
-    {
-        name: "Naomi Chen",
-        email: "n.chen@techglobal.com",
-        phone: "650-555-0189",
-        dob: "1993-06-18",
-        industry: "Technology",
-        tier: "Platinum",
-        status: "pending",
-        isFirstTimeFounder: true
+    hasPassport: true
+  },
+  {
+    firstName: "Sarah",
+    lastName: "Jenkins",
+    email: "sarah.j@wellnessco.org",
+    password: "WellnessPass99!",
+    phone: "404-555-0104",
+    dob: "1990-07-30",
+    industry: "Healthcare",
+    tier: "Silver",
+    status: "pending",
+    connectionGoals: {
+      socialSatisfaction: 5,
+      primaryInterest: "Meet New People",
+      isolationBarrier: "New to the city and looking for alcohol-free spaces."
     },
-    {
-        name: "Janet Sterling",
-        email: "jsterling@firm.org",
-        phone: "312-555-0444",
-        dob: "1978-12-05",
-        industry: "Legal",
-        tier: "Silver",
-        status: "pending",
-        isFirstTimeFounder: false
+    preferences: {
+      dietaryRestrictions: ["Vegan"],
+      apparelSize: "M",
+      favoriteMocktail: "Lavender Lemonade",
+      golfSkillLevel: "Never Played"
     },
-    {
-        name: "Julian Thorne",
-        email: "j.thorne@luxuryhomes.com",
-        phone: "305-555-0145",
-        dob: "1984-04-11",
-        industry: "Real Estate",
-        tier: "Platinum",
-        status: "pending",
-        isFirstTimeFounder: false
+    hasPassport: false
+  },
+  {
+    firstName: "David",
+    lastName: "Choi",
+    email: "dchoi@logistics.net",
+    password: "Password777!",
+    phone: "770-555-0105",
+    dob: "1984-12-12",
+    industry: "Supply Chain",
+    tier: "Gold",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 7,
+      primaryInterest: "Play/Games",
+      isolationBarrier: "Looking for high-energy weekend activities."
     },
-    {
-        name: "Beatrice Holt",
-        email: "bholt@wellness.com",
-        phone: "503-555-0912",
-        dob: "1991-08-28",
-        industry: "Healthcare",
-        tier: "Silver",
-        status: "pending",
-        isFirstTimeFounder: true
+    preferences: {
+      dietaryRestrictions: ["None"],
+      apparelSize: "2XL",
+      favoriteMocktail: "Grapefruit Fizz",
+      golfSkillLevel: "Intermediate"
     },
-    {
-        name: "Sasha Ivanov",
-        email: "sivanov@iplaw.com",
-        phone: "202-555-0722",
-        dob: "1987-10-10",
-        industry: "Legal",
-        tier: "Platinum",
-        status: "accepted",
-        isFirstTimeFounder: true
+    hasPassport: true
+  },
+  {
+    firstName: "Amara",
+    lastName: "Okonjo",
+    email: "amara.law@atlanta.gov",
+    password: "JusticeGFC1!",
+    phone: "404-555-0106",
+    dob: "1986-09-05",
+    industry: "Legal",
+    tier: "Platinum",
+    status: "waitlisted",
+    connectionGoals: {
+      socialSatisfaction: 2,
+      primaryInterest: "Travel",
+      isolationBarrier: "High-stress job; need a complete mental reset."
     },
-    {
-        name: "Marcus Sterling",
-        email: "m.sterling@fintech.com",
-        phone: "212-555-0198",
-        dob: "1980-02-25",
-        industry: "Finance",
-        tier: "Platinum",
-        status: "accepted",
-        isFirstTimeFounder: false
+    preferences: {
+      dietaryRestrictions: ["Dairy-Free"],
+      apparelSize: "S",
+      favoriteMocktail: "Pineapple Jalapeno Smoked Soda",
+      golfSkillLevel: "Beginner"
     },
-    {
-        name: "Leo Hashimoto",
-        email: "leo.h@cybersec.net",
-        phone: "206-555-0432",
-        dob: "1994-11-30",
-        industry: "Technology",
-        tier: "Platinum",
-        status: "pending",
-        isFirstTimeFounder: true
+    hasPassport: true
+  },
+  {
+    firstName: "Kevin",
+    lastName: "Miles",
+    email: "kmiles@creativeagency.com",
+    password: "CreativeMind44!",
+    phone: "678-555-0107",
+    dob: "1989-02-14",
+    industry: "Marketing",
+    tier: "Silver",
+    status: "pending",
+    connectionGoals: {
+      socialSatisfaction: 5,
+      primaryInterest: "Meet New People",
+      isolationBarrier: "Working from home makes me feel isolated."
     },
-    {
-        name: "Desiree Dupont",
-        email: "ddupont@parisrealty.com",
-        phone: "212-555-0888",
-        dob: "1983-05-19",
-        industry: "Real Estate",
-        tier: "Gold",
-        status: "accepted",
-        isFirstTimeFounder: false
+    preferences: {
+      dietaryRestrictions: ["None"],
+      apparelSize: "L",
+      favoriteMocktail: "Passionfruit Punch",
+      golfSkillLevel: "Never Played"
     },
-    {
-        name: "Dr. Amara Okafor",
-        email: "aokafor@neuro.org",
-        phone: "312-555-0811",
-        dob: "1986-07-07",
-        industry: "Healthcare",
-        tier: "Platinum",
-        status: "accepted",
-        isFirstTimeFounder: true
+    hasPassport: false
+  },
+  {
+    firstName: "Rachel",
+    lastName: "Zimmerman",
+    email: "rachelz@edutech.io",
+    password: "TeachJoy2026!",
+    phone: "404-555-0108",
+    dob: "1983-10-20",
+    industry: "Education Technology",
+    tier: "Gold",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 6,
+      primaryInterest: "Local Events",
+      isolationBarrier: "Friend groups have moved away; starting fresh."
     },
-    {
-        name: "Andre Whitaker",
-        email: "awhitaker@lawgroup.net",
-        phone: "202-555-0167",
-        dob: "1972-04-15",
-        industry: "Legal",
-        tier: "Gold",
-        status: "accepted",
-        isFirstTimeFounder: false
+    preferences: {
+      dietaryRestrictions: ["Nut Allergy"],
+      apparelSize: "M",
+      favoriteMocktail: "Pomegranate Spritz",
+      golfSkillLevel: "Beginner"
     },
-    {
-        name: "Kofi Arhin",
-        email: "karhin@software.io",
-        phone: "415-555-0922",
-        dob: "1991-12-12",
-        industry: "Technology",
-        tier: "Gold",
-        status: "accepted",
-        isFirstTimeFounder: true
+    hasPassport: true
+  },
+  {
+    firstName: "Terrence",
+    lastName: "Vaughn",
+    email: "tvaughn@buildit.com",
+    password: "ConstructLife1!",
+    phone: "770-555-0109",
+    dob: "1981-05-18",
+    industry: "Construction Management",
+    tier: "Silver",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 4,
+      primaryInterest: "Play/Games",
+      isolationBarrier: "Focus has been 100% on business for 5 years."
     },
-    {
-        name: "Aditi Sharma",
-        email: "asharma@capital.io",
-        phone: "212-555-0999",
-        dob: "1989-03-21",
-        industry: "Finance",
-        tier: "Platinum",
-        status: "accepted",
-        isFirstTimeFounder: true
+    preferences: {
+      dietaryRestrictions: ["None"],
+      apparelSize: "3XL",
+      favoriteMocktail: "Root Beer Float (Grown Folks Style)",
+      golfSkillLevel: "Advanced"
     },
-    {
-        name: "Vera Wang",
-        email: "vera@estates.net",
-        phone: "415-555-0333",
-        dob: "1981-10-09", industry:
-            "Real Estate", tier: "Platinum",
-        status: "pending",
-        isFirstTimeFounder: false
+    hasPassport: false
+  },
+  {
+    firstName: "Maya",
+    lastName: "Patel",
+    email: "maya.p@biolabs.com",
+    password: "ScienceGFC55!",
+    phone: "404-555-0110",
+    dob: "1987-01-25",
+    industry: "Biotechnology",
+    tier: "Platinum",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 3,
+      primaryInterest: "Travel",
+      isolationBarrier: "Hard to find people interested in alcohol-free luxury travel."
     },
-    {
-        name: "Gregori Markov",
-        email: "gmark@biotech.ru",
-        phone: "212-555-0555",
-        dob: "1979-06-22",
-        industry: "Healthcare",
-        tier: "Gold",
-        status: "pending",
-        isFirstTimeFounder: false
+    preferences: {
+      dietaryRestrictions: ["Vegetarian"],
+      apparelSize: "S",
+      favoriteMocktail: "Mango Chili Limeade",
+      golfSkillLevel: "Never Played"
     },
-    {
-        name: "Arthur Penhaligon",
-        email: "arthur@heritage.com",
-        phone: "617-555-0121",
-        dob: "1968-08-30",
-        industry: "Legal",
-        tier: "Platinum",
-        status: "accepted",
-        isFirstTimeFounder: false
+    hasPassport: true
+  },
+  {
+    firstName: "Chris",
+    lastName: "Jordan",
+    email: "cjordan@cybersec.co",
+    password: "CyberSecure88!",
+    phone: "678-555-0111",
+    dob: "1984-08-08",
+    industry: "Cybersecurity",
+    tier: "Gold",
+    status: "waitlisted",
+    connectionGoals: {
+      socialSatisfaction: 5,
+      primaryInterest: "Play/Games",
+      isolationBarrier: "Social anxiety in traditional networking mixers."
     },
-    {
-        name: "Reginald Banks",
-        email: "rbanks@investment.net",
-        phone: "704-555-0821",
-        dob: "1974-01-14",
-        industry: "Finance",
-        tier: "Silver",
-        status: "accepted",
-        isFirstTimeFounder: false
+    preferences: {
+      dietaryRestrictions: ["None"],
+      apparelSize: "XL",
+      favoriteMocktail: "Yuzu and Tonic",
+      golfSkillLevel: "Intermediate"
     },
-    {
-        name: "Soren Nielsen",
-        email: "soren@cloudscale.io",
-        phone: "408-555-0777",
-        dob: "1988-04-04",
-        industry: "Technology",
-        tier: "Gold",
-        status: "accepted",
-        isFirstTimeFounder: false
+    hasPassport: true
+  },
+  {
+    firstName: "Sasha",
+    lastName: "Banks",
+    email: "s.banks@mediarepublic.com",
+    password: "MediaQueen2026!",
+    phone: "404-555-0112",
+    dob: "1991-04-12",
+    industry: "Media & Entertainment",
+    tier: "Silver",
+    status: "pending",
+    connectionGoals: {
+      socialSatisfaction: 6,
+      primaryInterest: "Meet New People",
+      isolationBarrier: "My industry is heavily focused on late-night bar scenes."
     },
-    {
-        name: "Dr. Elena Vance",
-        email: "evance@healthway.org",
-        phone: "310-555-0102",
-        dob: "1985-06-16",
-        industry: "Healthcare",
-        tier: "Gold",
-        status: "accepted",
-        isFirstTimeFounder: true
+    preferences: {
+      dietaryRestrictions: ["Vegan"],
+      apparelSize: "XS",
+      favoriteMocktail: "Watermelon Basil Smash",
+      golfSkillLevel: "Never Played"
     },
-    {
-        name: "Kent Brockman",
-        email: "kent@developments.io",
-        phone: "312-555-0222",
-        dob: "1970-05-05",
-        industry: "Real Estate",
-        tier: "Silver",
-        status: "accepted",
-        isFirstTimeFounder: false
-    }
+    hasPassport: true
+  },
+  {
+    firstName: "Andre",
+    lastName: "Whitfield",
+    email: "awhitfield@realestate.com",
+    password: "BrokerLife123!",
+    phone: "404-555-0113",
+    dob: "1980-11-30",
+    industry: "Real Estate",
+    tier: "Platinum",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 4,
+      primaryInterest: "Local Events",
+      isolationBarrier: "Tired of 'business' social events; just want to play golf."
+    },
+    preferences: {
+      dietaryRestrictions: ["None"],
+      apparelSize: "XL",
+      favoriteMocktail: "Iced Hibiscus Tea",
+      golfSkillLevel: "Advanced"
+    },
+    hasPassport: true
+  },
+  {
+    firstName: "Kimberly",
+    lastName: "Lowell",
+    email: "k.lowell@nonprofit.org",
+    password: "ImpactGFC2026!",
+    phone: "678-555-0114",
+    dob: "1985-03-21",
+    industry: "Non-Profit Management",
+    tier: "Gold",
+    status: "accepted",
+    connectionGoals: {
+      socialSatisfaction: 7,
+      primaryInterest: "Travel",
+      isolationBarrier: "Giving so much to others that I've forgotten to have fun."
+    },
+    preferences: {
+      dietaryRestrictions: ["Gluten-Free"],
+      apparelSize: "L",
+      favoriteMocktail: "Blood Orange Jalapeno Margarita (Virgin)",
+      golfSkillLevel: "Beginner"
+    },
+    hasPassport: true
+  },
+  {
+    firstName: "Tyson",
+    lastName: "Reed",
+    email: "treed@fintech.io",
+    password: "FintechFanatic1!",
+    phone: "770-555-0115",
+    dob: "1988-06-02",
+    industry: "FinTech",
+    tier: "Silver",
+    status: "waitlisted",
+    connectionGoals: {
+      socialSatisfaction: 5,
+      primaryInterest: "Play/Games",
+      isolationBarrier: "Looking for a competitive co-ed sports environment."
+    },
+    preferences: {
+      dietaryRestrictions: ["None"],
+      apparelSize: "2XL",
+      favoriteMocktail: "Arnold Palmer (Extra Lemon)",
+      golfSkillLevel: "Intermediate"
+    },
+    hasPassport: false
+  }
 ];
 
 export const adminData = [

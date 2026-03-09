@@ -84,17 +84,19 @@ const applicantSchema = new mongoose.Schema(
 
 // --- PASSWORD ENCRYPTION LOGIC ---
 
-applicantSchema.pre("save", async function (next) {
-    if (!this.isModified("password")) return next();
+applicantSchema.pre("save", async function () {
+    // 1. Only hash the password if it has been modified (or is new)
+    if (!this.isModified("password")) return;
 
     try {
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
-       
         console.log(`🔐 Hashing password for: ${this.firstName}`);
-        next();
+        
+       
     } catch (err) {
-        next(err);
+        
+        throw err;
     }
 });
 
