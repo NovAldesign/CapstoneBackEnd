@@ -64,7 +64,7 @@ const applicantSchema = new mongoose.Schema(
         // Logistics for experiences
         preferences: {
             dietaryRestrictions: [String],
-            apparelSize: { type: String, enum: ['S', 'M', 'L', 'XL', '2XL', '3XL'] },
+            apparelSize: { type: String, enum: ['XS','S', 'M', 'L', 'XL', '2XL', '3XL'] },
             favoriteMocktail: String,
             golfSkillLevel: { type: String, enum: ['Beginner', 'Intermediate', 'Advanced', 'Never Played'] }
         },

@@ -355,37 +355,54 @@ export const adminData = [
         accessKey: "GFC_EXEC_2026",
         lastAction: "System Initialization",
         lastLoginIp: "192.168.1.1",
-        status: "active"
+        status: "active",
+        // Adding preferences to match the unified schema requirements
+        preferences: {
+            apparelSize: "XL",
+            golfSkillLevel: "Advanced"
+        }
     },
     {
         name: "Jordan Hayes",
         email: "j.hayes@gfc-ops.com",
-        password: "Jordan_GFC_2026",
+        password: "Jordan_GFC_2026!", // Added ! for Regex compliance
         role: "Admin",
         accessKey: "GFC_EXEC_2026",
         lastAction: "Approved Gold Member",
         lastLoginIp: "72.14.213.44",
-        status: "active"
+        status: "active",
+        preferences: {
+            apparelSize: "L",
+            golfSkillLevel: "Intermediate"
+        }
     },
     {
         name: "Morgan Reed",
         email: "m.reed@gfc-staff.com",
-        password: "Morgan_Staff_GFC",
+        password: "Morgan_Staff_GFC1!", // Added 1! for Regex compliance
         role: "Moderator",
         accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Flagged non-compliant sponsor",
         lastLoginIp: "104.16.44.12",
-        status: "active"
+        status: "active",
+        preferences: {
+            apparelSize: "M",
+            golfSkillLevel: "Beginner"
+        }
     },
     {
         name: "Sloane Rivers",
         email: "s.rivers@gfc-staff.com",
-        password: "Sloane_Staff_GFC",
+        password: "Sloane_Staff_GFC2!", // Added 2! for Regex compliance
         role: "Moderator",
         accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Updated event calendar",
         lastLoginIp: "68.33.112.05",
-        status: "active"
+        status: "active",
+        preferences: {
+            apparelSize: "S",
+            golfSkillLevel: "Never Played"
+        }
     },
     {
         name: "Casey Blair",
@@ -395,10 +412,13 @@ export const adminData = [
         accessKey: "MOD_LEVEL_1_GFC",
         lastAction: "Reviewed contract end dates",
         lastLoginIp: "172.58.12.99",
-        status: "active"
+        status: "active",
+        preferences: {
+            apparelSize: "L",
+            golfSkillLevel: "Intermediate"
+        }
     }
 ];
-
 export const partnershipData = [
     {
         companyName: "Nexus Wealth Management",

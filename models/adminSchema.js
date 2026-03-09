@@ -3,15 +3,15 @@ import bcrypt from "bcrypt";
 
 const adminSchema = new mongoose.Schema(
     {
-        name: {
-            type: String,
-            required: true,
+        name: { 
+            type: String, 
+            required: true 
         },
-        email: {
-            type: String,
+        email: { 
+            type: String, 
+            required: true, 
             unique: true,
-            required: true,
-            index: true,
+            index: true 
         },
         password: {
             type: String,
@@ -21,45 +21,55 @@ const adminSchema = new mongoose.Schema(
                 'Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character.'
             ]
         },
-        role: {
-            type: String,
-            enum: ["Admin", "Moderator"],
-            default: "Moderator",
+        role: { 
+            type: String, 
+            enum: ["Admin", "Moderator"], 
+            default: "Moderator" 
         },
-        accessKey: {
-            type: String,
-            required: true,
+        accessKey: { 
+            type: String, 
+            required: true 
         },
-        lastAction: {
-            type: String,
+        status: { 
+            type: String, 
+            enum: ["active", "inactive"], 
+            default: "active" 
         },
-        lastLoginIp: {
-            type: String,
+        
+        // --- Added Preferences for Staff Gear & Event Logistics ---
+        preferences: {
+            apparelSize: { 
+                type: String, 
+                enum: ['S', 'M', 'L', 'XL', '2XL', '3XL'],
+                default: 'L' // Defaulting to a standard size to prevent seed errors
+            },
+            golfSkillLevel: { 
+                type: String, 
+                enum: ['Beginner', 'Intermediate', 'Advanced', 'Never Played'],
+                default: 'Never Played'
+            }
         },
-        status: {
-            type: String,
-            default: "active",
-        }
-    },
-    { timestamps: true }
+
+        lastAction: { type: String },
+        lastLoginIp: { type: String },
+        createdAt: { type: Date, default: Date.now }
+    }
 );
 
 // --- PASSWORD ENCRYPTION LOGIC ---
-
 adminSchema.pre("save", async function () {
     if (!this.isModified("password")) return;
 
     try {
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
-        console.log(`🔐 Hashing password for: ${this.name}`);
+        console.log(`🔐 Hashing admin password for: ${this.name}`);
     } catch (err) {
-        // In async hooks, you can just throw the error
         throw err;
     }
 });
 
-// 2. This helper method is used during login to check if a password is correct
+// Helper for login comparison
 adminSchema.methods.comparePassword = async function (candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
 };
