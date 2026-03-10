@@ -2,9 +2,10 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from 'path';
 import { logReq, globalErr } from "./middleware/middleware.js";
 import connectDB from "./db/conn.js";
-import applicantRoutes from "./routes/applicantRoutes.js";
+import membershipRoutes from "./routes/membershipRoutes.js";
 
 // Setups
 dotenv.config();
@@ -16,9 +17,10 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 app.use(logReq);
+app.use('/uploads', express.static('uploads'));
 
 // Routes
-app.use("/api", applicantRoutes);
+app.use("/api", membershipRoutes);
 
 // Global Error Handling Middleware
 app.use(globalErr);
