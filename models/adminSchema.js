@@ -21,6 +21,16 @@ const adminSchema = new mongoose.Schema(
                 'Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character.'
             ]
         },
+        securityQuestion: {
+            type: String,
+            enum: [
+                "What was the name of your first pet?",
+                "What city did you meet your best friend in?",
+                "What was your favorite childhood board game?",
+                "What was the make of your first car?"
+            ]
+        },
+        securityAnswer: { type: String, select: false },
         role: { 
             type: String, 
             enum: ["Admin", "Moderator"], 
@@ -40,7 +50,7 @@ const adminSchema = new mongoose.Schema(
         preferences: {
             apparelSize: { 
                 type: String, 
-                enum: ['S', 'M', 'L', 'XL', '2XL', '3XL'],
+                enum: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'],
                 default: 'L' // Defaulting to a standard size to prevent seed errors
             },
             golfSkillLevel: { 

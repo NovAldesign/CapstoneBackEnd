@@ -14,6 +14,16 @@ const partnershipSchema = new mongoose.Schema({
         required: true,
         match: [/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, 'Weak password']
     },
+    securityQuestion: {
+            type: String,
+            enum: [
+                "What was the name of your first pet?",
+                "What city did you meet your best friend in?",
+                "What was your favorite childhood board game?",
+                "What was the make of your first car?"
+            ]
+        },
+        securityAnswer: { type: String, select: false },
 
     // Partnership Logistics
     tier: { type: String, enum: ['Founding Partner', 'Title Sponsor', 'In-Kind Donor'], default: 'Title Sponsor' },
