@@ -1,11 +1,12 @@
 import express from 'express';
+import { loginLimiter } from '../utilities/security.js';
 import Admin from '../models/adminSchema.js';
 import Membership from '../models/membershipSchema.js';
 import Partnership from '../models/partnershipSchema.js';
 
 const router = express.Router();
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
 
