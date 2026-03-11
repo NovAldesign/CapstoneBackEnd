@@ -69,3 +69,6 @@ Start Server: npm run dev (Automated directory creation included).
 The user interface for the Grown Folks Collective is built with **React** and **Vite**. You can find the frontend code, including the Admin, Partnership, Membership Dashboard and Membership, Admin, and Partnership Intake forms, at the link below:
 
 👉 [GFC Frontend Repository] https://github.com/NovAldesign/CapstoneFrontEnd.git
+
+ClickUp Project Management https://sharing.clickup.com/9014876050/l/h/6-901413868218-1/f0876eea91c3c06
+I used this app to help keep the flow of all the tasks needed to complete my Capstone.
