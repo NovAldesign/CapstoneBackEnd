@@ -3,11 +3,12 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from 'path';
-import fs from 'fs'; 
+import fs from 'fs';
 import { logReq, globalErr } from "./middleware/middleware.js";
+import { protect, restrictTo } from "./middleware/authMiddleware.js";
 import connectDB from "./db/conn.js";
 
-// Models & Data 
+// Models & Data
 import Membership from "./models/membershipSchema.js";
 import Admin from "./models/adminSchema.js";
 import Partnership from "./models/partnershipSchema.js";
@@ -33,22 +34,23 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Middlewares (Request)
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001'],
+    credentials: true
+}));
 app.use(express.json());
 app.use(logReq);
 
 // Serve uploads as a static route
 app.use('/uploads', express.static(uploadDir));
 
-// --- 1. Root System Routes  ---
-
+// --- 1. Root System Routes ---
 app.get("/api", systemRoutes);
 
 // --- 2. Domain Routes ---
-
-app.use("/api/membership", membershipRoutes); 
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
+app.use("/api/membership", membershipRoutes);         // Public - new member signup
+app.use('/api/auth', authRoutes);                     // Public - login & password reset
+app.use('/api/admin', protect, restrictTo('admin'), adminRoutes); // 🔒 Admin only
 
 // Global Error Handling Middleware
 app.use(globalErr);

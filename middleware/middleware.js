@@ -1,19 +1,12 @@
-
-
 export const logReq = (req, res, next) => {
   console.log(`${req.method} -- ${req.url} -- ${new Date().toLocaleTimeString()}`);
-  
-  next(); 
+  next();
 };
-
 
 export const globalErr = (err, req, res, next) => {
   console.error("GFC System Error:", err.stack);
-
-  // Check for Mongoose Validation errors specifically
   const statusCode = err.name === "ValidationError" ? 400 : (err.status || 500);
-  
-  res.status(statusCode).json({ 
-    error: `❌ ${err.name || 'Error'}: ${err.message}` 
+  res.status(statusCode).json({
+    error: `❌ ${err.name || 'Error'}: ${err.message}`
   });
 };

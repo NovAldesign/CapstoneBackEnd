@@ -28,10 +28,7 @@ const membershipSchema = new mongoose.Schema(
         password: {
             type: String,
             required: [true, 'Password is required'],
-            match: [
-                /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
-                'Password must be at least 8 characters long and include uppercase, lowercase, number, and special character.'
-            ]
+            minlength: [8, 'Password must be at least 8 characters long']
         },
         securityQuestion: {
             type: String,
@@ -56,7 +53,7 @@ const membershipSchema = new mongoose.Schema(
             default: "pending"
         },
 
-        // --- Connection Metrics (Focus on Ending Isolation) ---
+        // --- Connection Metrics  ---
         connectionGoals: {
             socialSatisfaction: { type: Number, min: 1, max: 10 },
             primaryInterest: {
@@ -69,8 +66,8 @@ const membershipSchema = new mongoose.Schema(
         // --- Logistics for Social Experiences ---
         preferences: {
             dietaryRestrictions: [String],
-            apparelSize: { type: String, enum: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'] },
-            favoriteMocktail: String, // Keeping it social without alcohol
+            apparelSize: { type: String, enum: ['XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL'] },
+            favoriteMocktail: String,
             golfSkillLevel: { type: String, enum: ['Beginner', 'Intermediate', 'Advanced', 'Never Played'] }
         },
 
@@ -85,24 +82,25 @@ const membershipSchema = new mongoose.Schema(
             type: Date,
             default: Date.now
         }
-    } // End of Schema 
+    }
 );
 
 // --- PASSWORD ENCRYPTION LOGIC ---
-
-
-
-membershipSchema.pre("save", async function (next) {
+//
+membershipSchema.pre("save", async function () {
     // Only hash the password if it has been modified (or is new)
-    if (!this.isModified("password")) return next();
+    if (!this.isModified("password")) return;
 
     try {
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
-        console.log(`🔐 Password secured for: ${this.firstName}`);
-        next();
+        
+        // Log initials for privacy in the console
+        const initials = `${this.firstName[0]}${this.lastName[0]}`;
+        console.log(`🔐 Password secured for member: ${initials}`);
     } catch (err) {
-        next(err);
+        // In async hooks, throwing the error passes it to the next middleware automatically
+        throw new Error(err);
     }
 });
 

@@ -11,7 +11,7 @@ const router = express.Router();
  * --- SYSTEM SEEDING ---
  * URL: GET /api/seed-all
  */
-router.get("/seed-all", async (req, res) => {
+router.get("/seed-all", async (req, res, next) => {
     try {
         console.log("🌱 System-wide seeding initiated...");
 

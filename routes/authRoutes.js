@@ -1,4 +1,5 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { loginLimiter } from '../utilities/security.js';
 import Admin from '../models/adminSchema.js';
 import Membership from '../models/membershipSchema.js';
@@ -29,19 +30,27 @@ router.post("/login", loginLimiter, async (req, res) => {
             return res.status(401).json({ error: "No account found with this email." });
         }
 
-        // 3. Verify Password using the method defined in your schemas
+        // 3. Verify Password
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
             return res.status(401).json({ error: "Invalid password. Please try again." });
         }
 
-        // 4. Send back the essential info (exclude the password!)
+        // 4. Issue JWT Token
+        const token = jwt.sign(
+            { id: user._id, role, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        // 5. Send back token + user info
         res.json({
             message: "Success",
+            token,
             role,
             id: user._id,
             name: user.firstName || user.name || "Member",
-            tier: user.tier || null 
+            tier: user.tier || null
         });
 
     } catch (err) {
