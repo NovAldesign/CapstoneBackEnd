@@ -3,9 +3,18 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from 'path';
-import fs from 'fs'; // used for folder check
+import fs from 'fs'; 
 import { logReq, globalErr } from "./middleware/middleware.js";
 import connectDB from "./db/conn.js";
+
+// Models & Data 
+import Membership from "./models/membershipSchema.js";
+import Admin from "./models/adminSchema.js";
+import Partnership from "./models/partnershipSchema.js";
+import { membershipData, adminData, partnershipData } from "./utilities/data.js";
+
+// Routes
+import systemRoutes from "./routes/systemRoutes.js";
 import membershipRoutes from "./routes/membershipRoutes.js";
 import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
@@ -28,11 +37,16 @@ app.use(cors());
 app.use(express.json());
 app.use(logReq);
 
-// Serve uploads as a static route so images/docs are viewable in React
+// Serve uploads as a static route
 app.use('/uploads', express.static(uploadDir));
 
-// Routes
-app.use("/api/members", membershipRoutes); 
+// --- 1. Root System Routes  ---
+
+app.get("/api", systemRoutes);
+
+// --- 2. Domain Routes ---
+
+app.use("/api/membership", membershipRoutes); 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
