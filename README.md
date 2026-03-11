@@ -1,93 +1,68 @@
-# CapstoneBackEnd
+Backend README (CapstoneBackEnd)
+The Grown Folks Collective | Executive API
+A robust Node.js/Express API powering the infrastructure of social connection.
 
-Backend README: The Grown Folks Collective API
-Project Overview
-This is the custom-built server for The Grown Folks Collective, a social ecosystem designed to end social isolation for adults 35+ through curated dinners, game nights, and travel.
+System Architecture
+Built on a RESTful MERN architecture, this API features a tiered security model and automated filesystem management (coming soon) to handle the complex needs of a growing social ecosystem.
 
-Built on the MERN stack, this API manages a unified portal for Admins, Members, and Partners. It handles complex authentication, secure document storage, and connection-based data metrics.
+🛠️ Core Runtime & Framework
+Node.js: The asynchronous event-driven JavaScript runtime used to build the scalable network application.
 
-Tech Stack:
-Node.js & Express: Used for all the server-side logic and RESTful routing.
-MongoDB & Mongoose: My database choice for storing flexible member data and dinner sign-ups.
-Bcrypt: I implemented this for secure password hashing during the login process.
-Dotenv: Secure environment variable management for API keys and database URI.
-Multer: Integrated for secure partner document and logo uploads.
-Express-Rate-Limit: Implemented to prevent brute-force attacks on the login portal.
+Express.js: The minimalist web framework used to design the RESTful API endpoints and handle middleware logic.
 
-Data Structure (The Schemas):
-I designed these schemas to keep the data clean and searchable:
+🗄️ Database & Modeling
+MongoDB Atlas: A cloud-based NoSQL database used for flexible, document-oriented data storage (Members, Admins, and Partnerships).
 
-1. Membership Intake (memberships)
-   Captures detailed founder data for the GFC community.
+Mongoose (ODM): Used to provide a schema-based solution to model your application data, including built-in validation and relationship management.
 
-Searchable Fields: Name, Email, Industry (Indexed for performance).
+🔐 Security & Authentication
+JSON Web Tokens (JWT): Facilitates secure, stateless authentication for the Admin Dashboard.
 
-Validation: Strict Enums for Membership Tiers (Platinum, Gold, Silver).
+Bcrypt: Handles irreversible password hashing (Salt Factor: 12) to protect administrative credentials.
 
-Logic: Tracks isFirstTimeFounder and submittedAt timestamps.
+CORS: Configured for secure cross-origin resource sharing between your Vite frontend and Express backend.
 
-2. Partnership Tracking (sponsors)
-   Manages business relationships and travel strategy partners.
+Express-Rate-Limit: Protects the API from brute-force attacks by limiting repeated requests to public routes.
 
-Contract Logic: Includes automated calculations for renewal dates.
+📁 File Handling & Filesystem
+Multer: Specialized middleware for handling multipart/form-data, specifically used for the "Partnership Vault" to upload and store organization logos.
 
-Alignment Check: Strings for verifying "Mission Alignment" before approval.
+Node File System (fs) & Path: Utilized for "Folder Safety Checks" to automatically detect or create the /uploads directory upon server initialization.
 
-3. Admin & Security (admins)
-   Handles the secure dashboard access.
+⚙️ Development Utilities
+Dotenv: Manages environment variables (e.g., MONGO_URI, JWT_SECRET) to keep sensitive credentials out of the source code.
 
-Encryption: Automatic Bcrypt pre-save hooks for password hashing.
+Nodemon: Used in development to automatically restart the server upon file changes, increasing productivity.
 
-Audit Trail: Tracks lastAction and lastLoginIp for security monitoring.
 
-Data Architecture (The Schemas)
-I designed these schemas to prioritize security and community connection:
+API ROUTES
+These are the primary views available in the Grown Folks Collective portal:
 
-1. Membership Profile (memberships)
-Beyond standard data, this tracks social alignment to facilitate authentic connections.
+Home (/): The landing experience featuring the mission statement, social wellness philosophy, and call-to-action for new members.
 
-Connection Metrics: Tracks socialSatisfaction and primaryInterest (e.g., Spades, Golf, Travel).
+Events (/events): The real-time dashboard powered by the Eventbrite API, displaying upcoming alcohol-free social gatherings and past community highlights.
 
-Luxe Logistics: Stores favoriteMocktail and apparelSize for event planning.
+Partnership (/partnerships): The dedicated intake portal for organizations. This route handles the Multer-powered file uploads for brand assets and logos.
 
-Security: Includes securityQuestion and securityAnswer (hidden from queries).
+Membership (/membership): The application gateway where prospective members submit their "Connection Metrics" (interests like Spades, Golf, and Travel).
 
-2. Partnership Vault (partnerships)
-Manages corporate relationships and sponsors.
+Login (/login): The secure gateway for Admins and Members. This route initiates the JWT authentication flow and manages session persistence.
 
-Document Array: Stores contract and logo metadata linked to local storage.
+Admin Dashboard (/admin): 🔒 Protected Route. Only accessible to users with a valid "Admin" role via the protect and restrictTo middleware.
 
-Renewal Logic: Calculates contract status automatically.
-
-3. Unified Security (admins)
-Handles high-level oversight and system resets.
-
-Audit Trail: Tracks lastAction for security monitoring.
-
-API Capabilities (CRUD)The API supports full Create, Read, Update, and Delete operations:
-Method Endpoint Description
-GET /api/memberships. Fetches all members with dynamic search/filter support.
-POST /api/memberships Submits a new membership intake form.
-PUT /api/memberships/:id Updates status (e.g., Pending → Accepted).
-DELETE /api/memberships/:id Removes a record from the database.
-POST /api/admin/login Securely authenticates admins via Bcrypt comparison.
 
 Setup & Installation
 
-1. Clone the repo: git clone
+Getting Started
+Clone the repo: git clone https://github.com/NovAldesign/CapstoneBackEnd.git
 
-2. Install dependencies: npm install
+Configure .env:
 
-3. Configure .env: ```env
-   MONGO_URI=your_mongodb_string
-   ADMIN_KEY=your_secret_access_key
-   PORT=3001
-
-4. Initialize Folders: Ensure an /uploads folder exists in the root directory.
-
-5. Seed the database: Run GET /api/admin/seed-all to populate initial GFC data.
-
-6. Start the server: npm run dev
+Code snippet
+PORT=3001
+MONGO_URI=your_mongodb_uri
+JWT_SECRET=gfc_super_secret_key_2024
+Start Server: npm run dev (Automated directory creation included).
 
 ## 🖥️ Frontend Repository
 
