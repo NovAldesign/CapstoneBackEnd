@@ -65,8 +65,8 @@ app.post(
     }
 
     // Dynamically import Order and Event to avoid circular deps
-    const { default: Order } = await import('./models/Order.js');
-    const { default: Event } = await import('./models/Event.js');
+    const { default: Order } = await import('./models/orderSchema.js');
+    const { default: Event } = await import('./models/eventSchema.js');
 
     if (stripeEvent.type === 'payment_intent.succeeded') {
       const paymentIntent = stripeEvent.data.object;
@@ -121,7 +121,7 @@ app.post(
     if (stripeEvent.type === 'payment_intent.payment_failed') {
       const paymentIntent = stripeEvent.data.object;
       try {
-        const { default: Order } = await import('./models/Order.js');
+        const { default: Order } = await import('./models/orderSchema.js');
         await Order.findOneAndUpdate(
           { stripePaymentIntentId: paymentIntent.id },
           { paymentStatus: 'failed' }
@@ -144,7 +144,7 @@ app.use(cors({
       'http://localhost:5173',
       'http://localhost:3000',
       'http://localhost:3001',
-    //   process.env.FRONTEND_URL,        // your Railway frontend URL
+      process.env.FRONTEND_URL,
     ].filter(Boolean),
     credentials: true
 }));
@@ -164,9 +164,10 @@ app.get("/api", systemRoutes);
 // 2. Public routes
 app.use("/api/membership", membershipRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/events', eventRoutes);              // GET events, POST checkout
-app.use('/api/partnerships', partnershipRoutes);  // Partnership inquiries
-app.use('/api/travel', travelRoutes); //Travel Interest Form
+app.use('/api/events', eventRoutes);
+app.use('/api/partnerships', partnershipRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/travel', travelRoutes);
 
 // 3. Protected routes
 app.use('/api/admin', protect, restrictTo('admin'), adminRoutes);
