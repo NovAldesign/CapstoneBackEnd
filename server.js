@@ -13,6 +13,7 @@ import connectDB from "./db/conn.js";
 import Membership from "./models/membershipSchema.js";
 import Admin from "./models/adminSchema.js";
 import Partnership from "./models/partnershipSchema.js";
+import Contact from "./models/contactSchema.js";
 import { membershipData, adminData, partnershipData } from "./utilities/data.js";
 
 // Routes
@@ -22,6 +23,8 @@ import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
 import partnershipRoutes from './routes/partnershipRoutes.js';
+import contactRoutes from './routes/contactRoutes.js';
+import travelRoutes from './routes/travelRoutes.js';
 
 // Setups
 dotenv.config();
@@ -163,6 +166,7 @@ app.use("/api/membership", membershipRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);              // GET events, POST checkout
 app.use('/api/partnerships', partnershipRoutes);  // Partnership inquiries
+app.use('/api/travel', travelRoutes); //Travel Interest Form
 
 // 3. Protected routes
 app.use('/api/admin', protect, restrictTo('admin'), adminRoutes);
