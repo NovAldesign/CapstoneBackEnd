@@ -36,7 +36,7 @@ connectDB();
 // --- Folder Safety Check ---
 const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
+    fs.mkdirSync(uploadDir, { recursive: true});
     console.log("Created missing 'uploads' directory");
 }
 
@@ -159,7 +159,7 @@ app.use('/uploads', express.static(uploadDir));
 // -------------------------------------------------------
 
 // 1. Root system
-app.get("/api", systemRoutes);
+app.use("/api", systemRoutes);
 
 // 2. Public routes
 app.use("/api/membership", membershipRoutes);
