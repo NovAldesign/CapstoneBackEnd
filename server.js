@@ -1,17 +1,19 @@
-// Imports
+// 1. Core Config & Environment — MUST BE FIRST
+import dotenv from "dotenv";
+dotenv.config(); 
+
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from 'path';
 import fs from 'fs';
 import Stripe from 'stripe';
 
-// Middleware & DB
+// 2. Middleware & DB Imports
 import { logReq, globalErr } from "./middleware/middleware.js";
 import { protect, restrictTo } from "./middleware/authMiddleware.js";
 import connectDB from "./db/conn.js";
 
-// Routes
+// 3. Route Imports — Now safe because dotenv ran above
 import systemRoutes from "./routes/systemRoutes.js";
 import membershipRoutes from "./routes/membershipRoutes.js";
 import authRoutes from './routes/authRoutes.js';
@@ -22,14 +24,12 @@ import contactRoutes from './routes/contactRoutes.js';
 import travelRoutes from './routes/travelRoutes.js';
 
 // -------------------------------------------------------
-// Setups & Environment
+// Initialization
 // -------------------------------------------------------
-dotenv.config(); // Must be called before accessing process.env
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize Stripe Safely to prevent crash if key is missing
+// Initialize Stripe Safely
 const stripe = process.env.STRIPE_SECRET_KEY 
     ? new Stripe(process.env.STRIPE_SECRET_KEY) 
     : null;
@@ -38,9 +38,10 @@ if (!stripe) {
     console.warn("⚠️ WARNING: STRIPE_SECRET_KEY is missing. Stripe features will fail.");
 }
 
+// Connect to Database
 connectDB();
 
-// --- Folder Safety Check ---
+// Folder Safety Check
 const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -50,10 +51,8 @@ if (!fs.existsSync(uploadDir)) {
 // -------------------------------------------------------
 // Initial Middlewares
 // -------------------------------------------------------
-// 1. Logger first so we see every incoming request
-app.use(logReq);
+app.use(logReq); // Logger first
 
-// 2. CORS Configuration
 app.use(cors({
     origin: [
       'http://localhost:5173',
@@ -76,7 +75,10 @@ app.post(
     const sig = req.headers['stripe-signature'];
     let stripeEvent;
 
-    if (!stripe) return res.status(500).send("Stripe not initialized");
+    if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+        console.error("Webhook failed: Stripe or Webhook Secret is missing.");
+        return res.status(500).send("Server configuration error.");
+    }
 
     try {
       stripeEvent = stripe.webhooks.constructEvent(
@@ -89,16 +91,13 @@ app.post(
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Dynamic imports to handle circular dependencies
     const { default: Order } = await import('./models/orderSchema.js');
     const { default: Event } = await import('./models/eventSchema.js');
 
     if (stripeEvent.type === 'payment_intent.succeeded') {
       const paymentIntent = stripeEvent.data.object;
-
       try {
         const order = await Order.findOne({ stripePaymentIntentId: paymentIntent.id });
-
         if (order && order.paymentStatus !== 'succeeded') {
           order.paymentStatus = 'succeeded';
           await order.save();
@@ -107,7 +106,6 @@ app.post(
           if (event) {
             const ticketType = event.ticketTypes.find(t => t.name === order.ticketType);
             if (ticketType) ticketType.sold += order.quantity;
-            
             if (order.promoCode) {
               const promo = event.promoCodes.find(p => p.code === order.promoCode);
               if (promo) promo.uses += 1;
@@ -124,7 +122,6 @@ app.post(
     if (stripeEvent.type === 'payment_intent.payment_failed') {
       const paymentIntent = stripeEvent.data.object;
       try {
-        const { default: Order } = await import('./models/orderSchema.js');
         await Order.findOneAndUpdate(
           { stripePaymentIntentId: paymentIntent.id },
           { paymentStatus: 'failed' }
@@ -139,7 +136,7 @@ app.post(
 );
 
 // -------------------------------------------------------
-// Remaining Standard Middlewares
+// Standard Middlewares
 // -------------------------------------------------------
 app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
@@ -155,7 +152,7 @@ app.use('/api/partnerships', partnershipRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/travel', travelRoutes);
 
-// Protected routes
+// Admin/Protected
 app.use('/api/admin', protect, restrictTo('admin'), adminRoutes);
 
 // -------------------------------------------------------

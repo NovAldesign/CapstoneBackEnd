@@ -5,21 +5,26 @@ import Order from '../models/orderSchema.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// -------------------------------------------------------
+// Safe Stripe Initialization
+// -------------------------------------------------------
+const stripe = process.env.STRIPE_SECRET_KEY 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY) 
+  : null;
 
 /* -------------------------------------------------------
    GET /api/events
    Public — returns all published events, upcoming first
 ------------------------------------------------------- */
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const events = await Event.find({ status: 'published' })
       .select('-promoCodes')
       .sort({ date: 1 });
     res.json(events);
   } catch (err) {
-    console.error('GET /api/events error:', err);
-    res.status(500).json({ error: 'Failed to fetch events.' });
+    next(err);
   }
 });
 
@@ -27,13 +32,13 @@ router.get('/', async (req, res) => {
    GET /api/events/:id
    Public — returns a single event by ID
 ------------------------------------------------------- */
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const event = await Event.findById(req.params.id).select('-promoCodes');
     if (!event) return res.status(404).json({ error: 'Event not found.' });
     res.json(event);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch event.' });
+    next(err);
   }
 });
 
@@ -41,70 +46,53 @@ router.get('/:id', async (req, res) => {
    POST /api/events
    Admin only — create a new event
 ------------------------------------------------------- */
-router.post(
-  '/',
-  protect,
-  restrictTo('admin'),
-  async (req, res) => {
-    try {
-      const event = new Event(req.body);
-      await event.save();
-      res.status(201).json(event);
-    } catch (err) {
-      console.error('POST /api/events error:', err);
-      res.status(400).json({ error: err.message });
-    }
+router.post('/', protect, restrictTo('admin'), async (req, res, next) => {
+  try {
+    const event = new Event(req.body);
+    await event.save();
+    res.status(201).json(event);
+  } catch (err) {
+    next(err);
   }
-);
+});
 
 /* -------------------------------------------------------
    PUT /api/events/:id
    Admin only — update an event
 ------------------------------------------------------- */
-router.put(
-  '/:id',
-  protect,
-  restrictTo('admin'),
-  async (req, res) => {
-    try {
-      const event = await Event.findByIdAndUpdate(
-        req.params.id,
-        req.body,
-        { new: true, runValidators: true }
-      );
-      if (!event) return res.status(404).json({ error: 'Event not found.' });
-      res.json(event);
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
+router.put('/:id', protect, restrictTo('admin'), async (req, res, next) => {
+  try {
+    const event = await Event.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    if (!event) return res.status(404).json({ error: 'Event not found.' });
+    res.json(event);
+  } catch (err) {
+    next(err);
   }
-);
+});
 
 /* -------------------------------------------------------
    DELETE /api/events/:id
    Admin only — delete an event
 ------------------------------------------------------- */
-router.delete(
-  '/:id',
-  protect,
-  restrictTo('admin'),
-  async (req, res) => {
-    try {
-      const event = await Event.findByIdAndDelete(req.params.id);
-      if (!event) return res.status(404).json({ error: 'Event not found.' });
-      res.json({ message: 'Event deleted.' });
-    } catch (err) {
-      res.status(500).json({ error: 'Failed to delete event.' });
-    }
+router.delete('/:id', protect, restrictTo('admin'), async (req, res, next) => {
+  try {
+    const event = await Event.findByIdAndDelete(req.params.id);
+    if (!event) return res.status(404).json({ error: 'Event not found.' });
+    res.json({ message: 'Event deleted.' });
+  } catch (err) {
+    next(err);
   }
-);
+});
 
 /* -------------------------------------------------------
    POST /api/events/:id/validate-promo
    Public — validates a promo code for a ticket type
-   Body: { code, ticketTypeId, quantity }
 ------------------------------------------------------- */
-router.post('/:id/validate-promo', async (req, res) => {
+router.post('/:id/validate-promo', async (req, res, next) => {
   try {
     const { code, ticketTypeId, quantity = 1 } = req.body;
     if (!code) return res.status(400).json({ error: 'No code provided.' });
@@ -116,22 +104,16 @@ router.post('/:id/validate-promo', async (req, res) => {
       (p) => p.code === code.toUpperCase().trim() && p.active
     );
 
-    if (!promo) {
-      return res.status(404).json({ error: 'Invalid or expired promo code.' });
-    }
-
+    if (!promo) return res.status(404).json({ error: 'Invalid or expired promo code.' });
     if (promo.expiresAt && new Date(promo.expiresAt) < new Date()) {
       return res.status(400).json({ error: 'This promo code has expired.' });
     }
-
     if (promo.maxUses !== null && promo.uses >= promo.maxUses) {
       return res.status(400).json({ error: 'This promo code has reached its usage limit.' });
     }
 
     const ticketType = event.ticketTypes.id(ticketTypeId);
-    if (!ticketType) {
-      return res.status(404).json({ error: 'Ticket type not found.' });
-    }
+    if (!ticketType) return res.status(404).json({ error: 'Ticket type not found.' });
 
     const subtotal = ticketType.price * quantity;
     let discount = 0;
@@ -152,26 +134,21 @@ router.post('/:id/validate-promo', async (req, res) => {
       total: subtotal - discount,
     });
   } catch (err) {
-    console.error('validate-promo error:', err);
-    res.status(500).json({ error: 'Promo validation failed.' });
+    next(err);
   }
 });
 
 /* -------------------------------------------------------
    POST /api/events/:id/create-payment-intent
-   Public — creates Stripe PaymentIntent + pending Order
-   Body: { ticketTypeId, quantity, buyerName,
-           buyerEmail, promoCode? }
 ------------------------------------------------------- */
-router.post('/:id/create-payment-intent', async (req, res) => {
+router.post('/:id/create-payment-intent', async (req, res, next) => {
   try {
-    const {
-      ticketTypeId,
-      quantity = 1,
-      buyerName,
-      buyerEmail,
-      promoCode,
-    } = req.body;
+    // Critical safety check before using Stripe
+    if (!stripe) {
+      return res.status(500).json({ error: 'Stripe is not configured on the server.' });
+    }
+
+    const { ticketTypeId, quantity = 1, buyerName, buyerEmail, promoCode } = req.body;
 
     if (!buyerName || !buyerEmail) {
       return res.status(400).json({ error: 'Buyer name and email are required.' });
@@ -181,15 +158,11 @@ router.post('/:id/create-payment-intent', async (req, res) => {
     if (!event) return res.status(404).json({ error: 'Event not found.' });
 
     const ticketType = event.ticketTypes.id(ticketTypeId);
-    if (!ticketType) {
-      return res.status(404).json({ error: 'Ticket type not found.' });
-    }
+    if (!ticketType) return res.status(404).json({ error: 'Ticket type not found.' });
 
     const remaining = ticketType.quantity - ticketType.sold;
     if (remaining < quantity) {
-      return res.status(400).json({
-        error: `Only ${remaining} ticket${remaining === 1 ? '' : 's'} remaining for ${ticketType.name}.`,
-      });
+      return res.status(400).json({ error: `Only ${remaining} tickets left.` });
     }
 
     const subtotal = ticketType.price * quantity;
@@ -201,11 +174,9 @@ router.post('/:id/create-payment-intent', async (req, res) => {
         (p) => p.code === promoCode.toUpperCase().trim() && p.active
       );
       if (promo) {
-        if (promo.discountType === 'percent') {
-          discount = Math.round(subtotal * (promo.discountValue / 100));
-        } else {
-          discount = Math.min(promo.discountValue, subtotal);
-        }
+        discount = promo.discountType === 'percent' 
+            ? Math.round(subtotal * (promo.discountValue / 100)) 
+            : Math.min(promo.discountValue, subtotal);
         promoUsed = promo.code;
       }
     }
@@ -218,11 +189,8 @@ router.post('/:id/create-payment-intent', async (req, res) => {
       automatic_payment_methods: { enabled: true },
       metadata: {
         eventId: event._id.toString(),
-        eventName: event.name,
         ticketType: ticketType.name,
-        quantity: quantity.toString(),
         buyerEmail,
-        buyerName,
         promoCode: promoUsed || '',
       },
     });
@@ -253,8 +221,7 @@ router.post('/:id/create-payment-intent', async (req, res) => {
       discount,
     });
   } catch (err) {
-    console.error('create-payment-intent error:', err);
-    res.status(500).json({ error: 'Failed to create payment. Please try again.' });
+    next(err);
   }
 });
 
@@ -262,19 +229,13 @@ router.post('/:id/create-payment-intent', async (req, res) => {
    GET /api/events/:id/orders
    Admin only — view all orders for an event
 ------------------------------------------------------- */
-router.get(
-  '/:id/orders',
-  protect,
-  restrictTo('admin'),
-  async (req, res) => {
-    try {
-      const orders = await Order.find({ event: req.params.id })
-        .sort({ createdAt: -1 });
-      res.json(orders);
-    } catch (err) {
-      res.status(500).json({ error: 'Failed to fetch orders.' });
-    }
+router.get('/:id/orders', protect, restrictTo('admin'), async (req, res, next) => {
+  try {
+    const orders = await Order.find({ event: req.params.id }).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    next(err);
   }
-);
+});
 
 export default router;
