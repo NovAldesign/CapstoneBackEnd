@@ -6,13 +6,17 @@ import Partnership from "../models/partnershipSchema.js";
 import { membershipData, adminData, partnershipData } from "../utilities/data.js";
 
 const router = express.Router();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// Initialize Stripe safely
+const stripe = process.env.STRIPE_SECRET_KEY 
+    ? new Stripe(process.env.STRIPE_SECRET_KEY) 
+    : null;
 
 /**
  * --- SYSTEM STATUS ---
  * URL: GET /api/status
  */
-router.get("/status", async (req, res) => {
+router.get("/status", async (req, res, next) => {
     try {
         const memberCount = await Membership.countDocuments();
         const adminCount = await Admin.countDocuments();
@@ -29,18 +33,20 @@ router.get("/status", async (req, res) => {
             timestamp: new Date().toISOString()
         });
     } catch (err) {
-        res.status(500).json({ error: `Status Check Failed: ${err.message}` });
+        next(err); // Passes to globalErr in middleware.js
     }
 });
 
 /**
  * --- STRIPE CONNECTIVITY CHECK ---
  * URL: GET /api/stripe-check
- * Verifies if the Secret Key is valid by creating a test PaymentIntent
  */
-router.get("/stripe-check", async (req, res) => {
+router.get("/stripe-check", async (req, res, next) => {
     try {
-        // Create a dummy $1.00 payment intent to verify the key
+        if (!stripe) {
+            throw new Error("STRIPE_SECRET_KEY is missing from environment variables.");
+        }
+
         const paymentIntent = await stripe.paymentIntents.create({
             amount: 100, 
             currency: 'usd',
@@ -54,7 +60,7 @@ router.get("/stripe-check", async (req, res) => {
             testIntentId: paymentIntent.id 
         });
     } catch (err) {
-        res.status(500).json({ error: `Stripe connection failed: ${err.message}` });
+        next(err);
     }
 });
 
@@ -66,27 +72,29 @@ router.get("/seed-all", async (req, res, next) => {
     try {
         console.log("🌱 System-wide seeding initiated...");
 
-        await Membership.deleteMany({});
-        await Admin.deleteMany({});
-        await Partnership.deleteMany({});
+        // Clear existing data
+        await Promise.all([
+            Membership.deleteMany({}),
+            Admin.deleteMany({}),
+            Partnership.deleteMany({})
+        ]);
 
+        // Insert new data
         await Membership.insertMany(membershipData);
         
-        for (const p of partnershipData) {
-            await new Partnership(p).save();
-        }
-
-        for (const a of adminData) {
-            await new Admin(a).save();
-        }
+        // Using Promise.all for faster execution on Railway
+        await Promise.all([
+            ...partnershipData.map(p => new Partnership(p).save()),
+            ...adminData.map(a => new Admin(a).save())
+        ]);
 
         console.log("✅ GFC Database fully seeded!");
         res.status(201).json({ 
-            message: "GFC Database fully seeded at /api/seed-all",
+            message: "GFC Database fully seeded",
             count: membershipData.length 
         });
     } catch (err) {
-        res.status(500).json({ error: `Seeding Failed: ${err.message}` });
+        next(err);
     }
 });
 

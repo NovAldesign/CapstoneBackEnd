@@ -5,16 +5,11 @@ import dotenv from "dotenv";
 import path from 'path';
 import fs from 'fs';
 import Stripe from 'stripe';
+
+// Middleware & DB
 import { logReq, globalErr } from "./middleware/middleware.js";
 import { protect, restrictTo } from "./middleware/authMiddleware.js";
 import connectDB from "./db/conn.js";
-
-// Models & Data
-import Membership from "./models/membershipSchema.js";
-import Admin from "./models/adminSchema.js";
-import Partnership from "./models/partnershipSchema.js";
-import Contact from "./models/contactSchema.js";
-import { membershipData, adminData, partnershipData } from "./utilities/data.js";
 
 // Routes
 import systemRoutes from "./routes/systemRoutes.js";
@@ -26,25 +21,53 @@ import partnershipRoutes from './routes/partnershipRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
 import travelRoutes from './routes/travelRoutes.js';
 
-// Setups
-dotenv.config();
+// -------------------------------------------------------
+// Setups & Environment
+// -------------------------------------------------------
+dotenv.config(); // Must be called before accessing process.env
+
 const app = express();
 const PORT = process.env.PORT || 3001;
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// Initialize Stripe Safely to prevent crash if key is missing
+const stripe = process.env.STRIPE_SECRET_KEY 
+    ? new Stripe(process.env.STRIPE_SECRET_KEY) 
+    : null;
+
+if (!stripe) {
+    console.warn("⚠️ WARNING: STRIPE_SECRET_KEY is missing. Stripe features will fail.");
+}
+
 connectDB();
 
 // --- Folder Safety Check ---
 const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true});
+    fs.mkdirSync(uploadDir, { recursive: true });
     console.log("Created missing 'uploads' directory");
 }
 
 // -------------------------------------------------------
-// STRIPE WEBHOOK — must be registered BEFORE express.json()
-// Stripe sends a raw Buffer body that express.json() would
-// destroy. This route needs the raw bytes to verify the
-// webhook signature.
+// Initial Middlewares
+// -------------------------------------------------------
+// 1. Logger first so we see every incoming request
+app.use(logReq);
+
+// 2. CORS Configuration
+app.use(cors({
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://www.grownfolkscollective.com',
+      'https://grownfolkscollective.com',
+      process.env.FRONTEND_URL,
+    ].filter(Boolean),
+    credentials: true
+}));
+
+// -------------------------------------------------------
+// STRIPE WEBHOOK — must be BEFORE express.json()
 // -------------------------------------------------------
 app.post(
   '/api/webhooks/stripe',
@@ -52,6 +75,8 @@ app.post(
   async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let stripeEvent;
+
+    if (!stripe) return res.status(500).send("Stripe not initialized");
 
     try {
       stripeEvent = stripe.webhooks.constructEvent(
@@ -64,7 +89,7 @@ app.post(
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Dynamically import Order and Event to avoid circular deps
+    // Dynamic imports to handle circular dependencies
     const { default: Order } = await import('./models/orderSchema.js');
     const { default: Event } = await import('./models/eventSchema.js');
 
@@ -72,47 +97,25 @@ app.post(
       const paymentIntent = stripeEvent.data.object;
 
       try {
-        const order = await Order.findOne({
-          stripePaymentIntentId: paymentIntent.id,
-        });
+        const order = await Order.findOne({ stripePaymentIntentId: paymentIntent.id });
 
-        if (!order) {
-          console.error('Order not found for payment intent:', paymentIntent.id);
-          return res.json({ received: true });
-        }
+        if (order && order.paymentStatus !== 'succeeded') {
+          order.paymentStatus = 'succeeded';
+          await order.save();
 
-        // Idempotency guard — don't process twice
-        if (order.paymentStatus === 'succeeded') {
-          return res.json({ received: true });
-        }
-
-        order.paymentStatus = 'succeeded';
-        await order.save();
-
-        // Decrement ticket inventory
-        const event = await Event.findById(order.event);
-        if (event) {
-          const ticketType = event.ticketTypes.find(
-            (t) => t.name === order.ticketType
-          );
-          if (ticketType) {
-            ticketType.sold += order.quantity;
+          const event = await Event.findById(order.event);
+          if (event) {
+            const ticketType = event.ticketTypes.find(t => t.name === order.ticketType);
+            if (ticketType) ticketType.sold += order.quantity;
+            
+            if (order.promoCode) {
+              const promo = event.promoCodes.find(p => p.code === order.promoCode);
+              if (promo) promo.uses += 1;
+            }
+            await event.save();
           }
-
-          // Increment promo code uses if applicable
-          if (order.promoCode) {
-            const promo = event.promoCodes.find(
-              (p) => p.code === order.promoCode
-            );
-            if (promo) promo.uses += 1;
-          }
-
-          await event.save();
+          console.log(`✅ Order ${order.confirmationCode} confirmed.`);
         }
-
-        console.log(`Order ${order.confirmationCode} confirmed for ${order.buyerEmail}`);
-        // TODO: add email confirmation here (SendGrid / Resend)
-
       } catch (err) {
         console.error('Webhook processing error:', err);
       }
@@ -126,7 +129,6 @@ app.post(
           { stripePaymentIntentId: paymentIntent.id },
           { paymentStatus: 'failed' }
         );
-        console.log(`Payment failed for intent: ${paymentIntent.id}`);
       } catch (err) {
         console.error('Failed to update failed payment order:', err);
       }
@@ -137,31 +139,15 @@ app.post(
 );
 
 // -------------------------------------------------------
-// Standard Middlewares — AFTER the Stripe webhook route
+// Remaining Standard Middlewares
 // -------------------------------------------------------
-app.use(cors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      process.env.FRONTEND_URL,
-    ].filter(Boolean),
-    credentials: true
-}));
 app.use(express.json());
-app.use(logReq);
-
-// Serve uploads as static
 app.use('/uploads', express.static(uploadDir));
 
 // -------------------------------------------------------
 // Routes
 // -------------------------------------------------------
-
-// 1. Root system
 app.use("/api", systemRoutes);
-
-// 2. Public routes
 app.use("/api/membership", membershipRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
@@ -169,11 +155,11 @@ app.use('/api/partnerships', partnershipRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/travel', travelRoutes);
 
-// 3. Protected routes
+// Protected routes
 app.use('/api/admin', protect, restrictTo('admin'), adminRoutes);
 
 // -------------------------------------------------------
-// Global Error Handler
+// Global Error Handler — MUST be last
 // -------------------------------------------------------
 app.use(globalErr);
 
@@ -181,8 +167,7 @@ app.use(globalErr);
 // Listener
 // -------------------------------------------------------
 app.listen(PORT, () => {
-    console.log(`GFC Server running on PORT: ${PORT}`);
-    console.log(`System Date: ${new Date().toLocaleDateString()}`);
-    console.log(`Connection Mode: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`Stripe mode: ${process.env.STRIPE_SECRET_KEY?.startsWith('sk_live') ? 'LIVE' : 'TEST'}`);
+    console.log(`🚀 GFC Server running on PORT: ${PORT}`);
+    console.log(`📅 System Date: ${new Date().toLocaleDateString()}`);
+    console.log(`🔒 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
