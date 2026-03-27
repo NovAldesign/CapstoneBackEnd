@@ -13,7 +13,7 @@ import { logReq, globalErr } from "./middleware/middleware.js";
 import { protect, restrictTo } from "./middleware/authMiddleware.js";
 import connectDB from "./db/conn.js";
 
-// 3. Route Imports — Now safe because dotenv ran above
+// 3. Route Imports
 import systemRoutes from "./routes/systemRoutes.js";
 import membershipRoutes from "./routes/membershipRoutes.js";
 import authRoutes from './routes/authRoutes.js';
@@ -27,6 +27,11 @@ import travelRoutes from './routes/travelRoutes.js';
 // Initialization
 // -------------------------------------------------------
 const app = express();
+
+/** 
+ * RAILWAY FIX: Use process.env.PORT provided by Railway.
+ * Default to 3001 only for local development.
+ */
 const PORT = process.env.PORT || 3001;
 
 // Initialize Stripe Safely
@@ -51,7 +56,7 @@ if (!fs.existsSync(uploadDir)) {
 // -------------------------------------------------------
 // Initial Middlewares
 // -------------------------------------------------------
-app.use(logReq); // Logger first
+app.use(logReq); 
 
 app.use(cors({
     origin: [
@@ -60,10 +65,20 @@ app.use(cors({
       'http://localhost:3001',
       'https://www.grownfolkscollective.com',
       'https://grownfolkscollective.com',
+      'https://capstonebackend-production-78e3.up.railway.app', // Your specific Railway URL
       process.env.FRONTEND_URL,
     ].filter(Boolean),
     credentials: true
 }));
+
+/**
+ * RAILWAY FIX: Health Check Route
+ * Railway pings "/" to see if the server is alive. 
+ * Without this, your deployment may "fail" even if the server is running.
+ */
+app.get('/', (req, res) => {
+    res.status(200).send('🚀 GFC API is live and healthy!');
+});
 
 // -------------------------------------------------------
 // STRIPE WEBHOOK — must be BEFORE express.json()
@@ -91,6 +106,7 @@ app.post(
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
+    // Dynamic imports for models inside the webhook
     const { default: Order } = await import('./models/orderSchema.js');
     const { default: Event } = await import('./models/eventSchema.js');
 
@@ -163,7 +179,11 @@ app.use(globalErr);
 // -------------------------------------------------------
 // Listener
 // -------------------------------------------------------
-app.listen(PORT, () => {
+/**
+ * RAILWAY FIX: Bind to '0.0.0.0'.
+ * This allows the Railway network to route external traffic into the container.
+ */
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 GFC Server running on PORT: ${PORT}`);
     console.log(`📅 System Date: ${new Date().toLocaleDateString()}`);
     console.log(`🔒 Mode: ${process.env.NODE_ENV || 'development'}`);
