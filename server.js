@@ -29,8 +29,8 @@ import travelRoutes from './routes/travelRoutes.js';
 const app = express();
 
 /** 
- * RAILWAY FIX: Use process.env.PORT provided by Railway.
- * Default to 3001 only for local development.
+ * RAILWAY FIX: Railway injects a PORT variable. 
+ * This ensures the app listens where Railway expects.
  */
 const PORT = process.env.PORT || 3001;
 
@@ -65,19 +65,18 @@ app.use(cors({
       'http://localhost:3001',
       'https://www.grownfolkscollective.com',
       'https://grownfolkscollective.com',
-      'https://capstonebackend-production-78e3.up.railway.app', // Your specific Railway URL
+      'https://capstonebackend-production-78e3.up.railway.app',
       process.env.FRONTEND_URL,
     ].filter(Boolean),
     credentials: true
 }));
 
 /**
- * RAILWAY FIX: Health Check Route
- * Railway pings "/" to see if the server is alive. 
- * Without this, your deployment may "fail" even if the server is running.
+ * RAILWAY FIX: Root Health Check
+ * This prevents "Service Unavailable" errors during deployment.
  */
 app.get('/', (req, res) => {
-    res.status(200).send('🚀 GFC API is live and healthy!');
+    res.status(200).send('🚀 Grown Folks Collective API is live and healthy!');
 });
 
 // -------------------------------------------------------
@@ -106,7 +105,6 @@ app.post(
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Dynamic imports for models inside the webhook
     const { default: Order } = await import('./models/orderSchema.js');
     const { default: Event } = await import('./models/eventSchema.js');
 
@@ -180,8 +178,8 @@ app.use(globalErr);
 // Listener
 // -------------------------------------------------------
 /**
- * RAILWAY FIX: Bind to '0.0.0.0'.
- * This allows the Railway network to route external traffic into the container.
+ * RAILWAY FIX: Listen on 0.0.0.0
+ * This is mandatory for Docker/Railway to route traffic to your app.
  */
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 GFC Server running on PORT: ${PORT}`);
