@@ -421,16 +421,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
 // -------------------------------------------------------
-// 4. STRATEGIC CORS CONFIG
+// 4. STRATEGIC CORS CONFIG (Manual Injection)
 // -------------------------------------------------------
-
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = [
     "https://grownfolkscollective.com",
     "https://www.grownfolkscollective.com",
-    "http://localhost:5173"
-  ];
+    "http://localhost:5173",
+    process.env.FRONTEND_URL
+  ].filter(Boolean);
 
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
@@ -441,6 +441,7 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
   // IMMEDIATELY return 204 for the browser's "Preflight" check
+  // This prevents the request from even reaching your routes if it's just a security check
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
   }
@@ -495,7 +496,7 @@ app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), asyn
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // ... (Your Webhook Logic Here) ...
+  // Your Webhook Logic
   res.json({ received: true });
 });
 
@@ -509,14 +510,14 @@ app.use("/uploads", express.static(uploadDir));
 // -------------------------------------------------------
 // 9. Routes
 // -------------------------------------------------------
-app.use("/api", systemRoutes);
-app.use("/api/membership", membershipRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/events", eventRoutes);
+app.use("/api",              systemRoutes);
+app.use("/api/membership",   membershipRoutes);
+app.use("/api/auth",         authRoutes);
+app.use("/api/events",       eventRoutes);
 app.use("/api/partnerships", partnershipRoutes);
-app.use("/api/contact", contactRoutes);
-app.use("/api/travel", travelRoutes);
-app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
+app.use("/api/contact",      contactRoutes);
+app.use("/api/travel",       travelRoutes);
+app.use("/api/admin",        protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
 // 10. Error Handling & Start
