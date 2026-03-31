@@ -423,36 +423,30 @@ const __dirname  = dirname(__filename);
 // -------------------------------------------------------
 // 4. STRATEGIC CORS CONFIG
 // -------------------------------------------------------
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "https://grownfolkscollective.com",
-  "https://www.grownfolkscollective.com",
-  "https://capstonebackend-production-78e3.up.railway.app",
-  process.env.FRONTEND_URL,
-].filter(Boolean);
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-  optionsSuccessStatus: 204, 
-};
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    "https://grownfolkscollective.com",
+    "https://www.grownfolkscollective.com",
+    "http://localhost:5173"
+  ];
 
-// 1. Apply CORS globally
-app.use(cors(corsOptions));
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
 
-// 2. Handle pre-flight for all routes using REGEX literal (no quotes)
-app.options(/.*/, cors(corsOptions));
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  // IMMEDIATELY return 204 for the browser's "Preflight" check
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
 
 // -------------------------------------------------------
 // 5. Logging & Initialization
