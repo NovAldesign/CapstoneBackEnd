@@ -427,7 +427,6 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = [
     "https://grownfolkscollective.com",
-    "https://www.grownfolkscollective.com",
     "http://localhost:5173",
     process.env.FRONTEND_URL
   ].filter(Boolean);
