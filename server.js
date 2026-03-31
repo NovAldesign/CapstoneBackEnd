@@ -424,10 +424,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
 console.log("🛠️  BOOTING UP GROWN FOLKS COLLECTIVE...");
-console.log("📡 TARGET PORT:",          process.env.PORT);
-console.log("📦 NODE_ENV:",             process.env.NODE_ENV);
-console.log("🔑 MONGO URI PRESENT:",    !!process.env.MONGODB_URI);
-console.log("💳 STRIPE KEY PRESENT:",   !!process.env.STRIPE_SECRET_KEY);
+console.log("📡 TARGET PORT:",        process.env.PORT);
+console.log("📦 NODE_ENV:",           process.env.NODE_ENV);
+console.log("🔑 MONGO URI PRESENT:",  !!process.env.MONGODB_URI);
+console.log("💳 STRIPE KEY PRESENT:", !!process.env.STRIPE_SECRET_KEY);
 
 // -------------------------------------------------------
 // Stripe
@@ -441,9 +441,9 @@ if (!stripe) {
 }
 
 // -------------------------------------------------------
-// Upload Directory — ensure it exists at boot
+// Upload Directories — ensure they exist at boot
 // -------------------------------------------------------
-const uploadDir = join(__dirname, "uploads");
+const uploadDir      = join(__dirname, "uploads");
 const eventUploadDir = join(uploadDir, "events");
 
 [uploadDir, eventUploadDir].forEach((dir) => {
@@ -454,24 +454,35 @@ const eventUploadDir = join(uploadDir, "events");
 });
 
 // -------------------------------------------------------
-// CORS
+// CORS config — shared so it can be reused for preflight
 // -------------------------------------------------------
-app.use(logReq);
-
-app.use(
-  cors({
-    origin: [
+const corsOptions = {
+  origin: (origin, callback) => {
+    const allowed = [
       "http://localhost:5173",
       "http://localhost:3000",
-      "https://www.grownfolkscollective.com",
+      "http://localhost:3001",
       "https://grownfolkscollective.com",
+      "https://www.grownfolkscollective.com",
+      "https://capstonebackend-production-78e3.up.railway.app",
       process.env.FRONTEND_URL,
-    ].filter(Boolean),
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Explicitly allow these
-    allowedHeaders: ["Content-Type", "Authorization"],    // Explicitly allow these
-  })
-);
+    ].filter(Boolean);
+
+    if (!origin || allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.error(`🚫 CORS blocked origin: ${origin}`);
+      callback(new Error(`CORS policy blocked origin: ${origin}`));
+    }
+  },
+  credentials:    true,
+  methods:        ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(logReq);
+app.use(cors(corsOptions));
+app.options("/{*path}", cors(corsOptions));
 
 // -------------------------------------------------------
 // Health Check — Railway pings this
@@ -554,8 +565,6 @@ app.post(
 // -------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Serve uploaded images
 app.use("/uploads", express.static(uploadDir));
 
 // -------------------------------------------------------
@@ -571,7 +580,7 @@ app.use("/api/travel",       travelRoutes);
 app.use("/api/admin",        protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
-// Global Error Handler
+// Global Error Handler — MUST be last
 // -------------------------------------------------------
 app.use(globalErr);
 
