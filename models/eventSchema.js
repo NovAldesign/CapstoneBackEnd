@@ -1,28 +1,31 @@
 import mongoose from 'mongoose';
 
+/* -------------------------------------------------------
+   Ticket Type Sub-Schema
+------------------------------------------------------- */
 const TicketTypeSchema = new mongoose.Schema({
   name: {
-    type: String,
+    type:     String,
     required: true,
     // e.g. 'General Admission', 'VIP', 'Founding Member'
   },
   price: {
-    type: Number,
+    type:     Number,
     required: true,
-    min: 0,
+    min:      0,
     // stored in cents for Stripe — e.g. 5000 = $50.00
   },
   quantity: {
-    type: Number,
+    type:     Number,
     required: true,
-    min: 0,
+    min:      0,
   },
   sold: {
-    type: Number,
+    type:    Number,
     default: 0,
   },
   description: {
-    type: String,
+    type:    String,
     default: '',
   },
 });
@@ -35,81 +38,87 @@ TicketTypeSchema.virtual('soldOut').get(function () {
   return this.sold >= this.quantity;
 });
 
+/* -------------------------------------------------------
+   Promo Code Sub-Schema
+------------------------------------------------------- */
 const PromocodeSchema = new mongoose.Schema({
   code: {
-    type: String,
-    required: true,
+    type:      String,
+    required:  true,
     uppercase: true,
-    trim: true,
+    trim:      true,
   },
   discountType: {
-    type: String,
-    enum: ['percent', 'fixed'],
+    type:     String,
+    enum:     ['percent', 'fixed'],
     required: true,
     // 'percent' = e.g. 20% off
     // 'fixed'   = e.g. $10 off (stored in cents)
   },
   discountValue: {
-    type: Number,
+    type:     Number,
     required: true,
   },
   maxUses: {
-    type: Number,
+    type:    Number,
     default: null,
   },
   uses: {
-    type: Number,
+    type:    Number,
     default: 0,
   },
   expiresAt: {
-    type: Date,
+    type:    Date,
     default: null,
   },
   active: {
-    type: Boolean,
+    type:    Boolean,
     default: true,
   },
 });
 
+/* -------------------------------------------------------
+   Event Schema
+------------------------------------------------------- */
 const EventSchema = new mongoose.Schema(
   {
     name: {
-      type: String,
+      type:     String,
       required: true,
-      trim: true,
+      trim:     true,
     },
     description: {
-      type: String,
+      type:     String,
       required: true,
     },
     date: {
-      type: Date,
+      type:     Date,
       required: true,
     },
     endDate: {
-      type: Date,
+      type:     Date,
       required: true,
     },
     location: {
-      name: { type: String, required: true },
+      name:    { type: String, required: true },
       address: { type: String, default: '' },
-      city: { type: String, default: 'Atlanta' },
-      state: { type: String, default: 'GA' },
+      city:    { type: String, default: 'Atlanta' },
+      state:   { type: String, default: 'GA' },
     },
     coverImage: {
-      type: String,
+      type:    String,
       default: '',
     },
     ticketTypes: [TicketTypeSchema],
-    promoCodes: [PromocodeSchema],
+    promoCodes:  [PromocodeSchema],
     capacity: {
-      type: Number,
+      type:     Number,
       required: true,
-      default: 36,
+      default:  36,
     },
     status: {
-      type: String,
-      enum: ['draft', 'published', 'cancelled', 'completed'],
+      type:    String,
+      enum:    ['draft', 'published', 'cancelled', 'completed'],
       default: 'published',
     },
     eventType: {
@@ -126,21 +135,24 @@ const EventSchema = new mongoose.Schema(
       default: 'Other',
     },
     isFree: {
-      type: Boolean,
+      type:    Boolean,
       default: false,
     },
     featuredSponsor: {
-      type: String,
+      type:    String,
       default: '',
     },
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
+    toJSON:     { virtuals: true },
+    toObject:   { virtuals: true },
   }
 );
 
+/* -------------------------------------------------------
+   Event Virtuals
+------------------------------------------------------- */
 EventSchema.virtual('totalSold').get(function () {
   return this.ticketTypes.reduce((sum, t) => sum + t.sold, 0);
 });
