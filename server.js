@@ -522,20 +522,17 @@ app.use(globalErr);
 
 const startServer = async () => {
   try {
-    // 1. Connect to Database
+    // 1. Wait for Database
     await connectDB();
     console.log("✅ MongoDB Connection Established");
     
     // 2. Start Express
-    // Ensure PORT is a number and binding to 0.0.0.0 is explicit
-    const serverPort = Number(PORT); 
-    
-    app.listen(serverPort, "0.0.0.0", () => {
-      console.log(`🚀 GFC Server responding on PORT: ${serverPort}`);
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 GFC Server responding on PORT: ${PORT}`);
     });
-
   } catch (err) {
     console.error("❌ Critical Startup Error:", err.message);
+    // On Railway, we exit so the platform knows to restart the container
     process.exit(1);
   }
 };
