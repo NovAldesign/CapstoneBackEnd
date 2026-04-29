@@ -522,14 +522,20 @@ app.use(globalErr);
 
 const startServer = async () => {
   try {
+    // 1. Connect to Database
     await connectDB();
     console.log("✅ MongoDB Connection Established");
     
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 GFC Server responding on PORT: ${PORT}`);
+    // 2. Start Express
+    // Ensure PORT is a number and binding to 0.0.0.0 is explicit
+    const serverPort = Number(PORT); 
+    
+    app.listen(serverPort, "0.0.0.0", () => {
+      console.log(`🚀 GFC Server responding on PORT: ${serverPort}`);
     });
+
   } catch (err) {
-    console.error("❌ MongoDB Connection Failed:", err.message);
+    console.error("❌ Critical Startup Error:", err.message);
     process.exit(1);
   }
 };
