@@ -422,30 +422,36 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
 // -------------------------------------------------------
-// 4. STRATEGIC CORS CONFIG (The Standard Way)
+// 4. STRATEGIC CORS CONFIG (Optimized for Preflight)
 // -------------------------------------------------------
 const allowedOrigins = [
   "https://grownfolkscollective.com",
   "https://www.grownfolkscollective.com",
   "http://localhost:5173",
-  "http://localhost:3000"
-];
+  "http://localhost:3000",
+  process.env.FRONTEND_URL
+].filter(Boolean);
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.warn(`⚠️ CORS Blocked: Origin ${origin} not in allowed list.`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
-}));
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  optionsSuccessStatus: 204 // Some older browsers choke on 204
+};
+
+// Apply CORS to all routes
+app.use(cors(corsOptions));
+
+// Explicitly handle preflight requests for all routes
+app.options('*', cors(corsOptions));
 
 // -------------------------------------------------------
 // 5. Initialization & Directory Safety
@@ -464,7 +470,7 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // -------------------------------------------------------
-// 6. Health Check (For Railway pings)
+// 6. Health Check
 // -------------------------------------------------------
 app.get("/", (req, res) => {
   res.status(200).send("🚀 GFC API is live and healthy!");
@@ -491,7 +497,7 @@ app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), asyn
 });
 
 // -------------------------------------------------------
-// 8. Standard Middleware
+// 8. Standard Middleware (After CORS/Webhooks)
 // -------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -510,7 +516,7 @@ app.use("/api/travel",       travelRoutes);
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
-// 10. Final Catch & Start (WAIT FOR DB FIRST)
+// 10. Final Catch & Start
 // -------------------------------------------------------
 app.use(globalErr);
 
@@ -524,7 +530,7 @@ const startServer = async () => {
     });
   } catch (err) {
     console.error("❌ MongoDB Connection Failed:", err.message);
-    process.exit(1); // Stop the app if DB fails so Railway can restart it
+    process.exit(1);
   }
 };
 
