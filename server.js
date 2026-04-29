@@ -415,7 +415,7 @@ import contactRoutes from "./routes/contactRoutes.js";
 import travelRoutes from "./routes/travelRoutes.js";
 
 const app  = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Path handling for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -528,24 +528,20 @@ app.use(globalErr);
 
 const startServer = async () => {
   try {
-    // 1. Connect to Database first
     await connectDB();
     console.log("✅ MongoDB Connection Established");
-    
-    // 2. Resolve the Port (ensure it's a valid number)
-    const normalizedPort = Number(process.env.PORT) || 3001;
-    
-    // 3. Start the engine
+
+    // ✅ Remove the normalizedPort line — just use PORT
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 GFC Server responding on PORT: ${PORT}`);
     });
 
   } catch (err) {
     console.error("❌ Critical Startup Error:", err.message);
-    // Exit ensures Railway knows to attempt a reboot
     process.exit(1);
   }
 };
+
 
 // Execute the start
 startServer();
