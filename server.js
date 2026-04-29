@@ -424,31 +424,27 @@ const __dirname  = dirname(__filename);
 // -------------------------------------------------------
 // 4. STRATEGIC CORS CONFIG (Fixes Network Errors)
 // -------------------------------------------------------
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const allowedOrigins = [
-    "https://grownfolkscollective.com",
-    "https://www.grownfolkscollective.com",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    process.env.FRONTEND_URL
-  ].filter(Boolean);
+app.use(cors({
+  origin: (origin, callback) => {
+    const allowedOrigins = [
+      "https://grownfolkscollective.com",
+      "https://www.grownfolkscollective.com",
+      "http://localhost:5173",
+      "http://localhost:3000",
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
 
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-
-  // Handle Preflight: Browsers send OPTIONS before POST/PUT
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-
-  next();
-});
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  credentials: true
+}));
 
 // -------------------------------------------------------
 // 5. Initialization & Directory Safety
@@ -456,7 +452,6 @@ app.use((req, res, next) => {
 app.use(logReq);
 
 console.log("🛠️  BOOTING UP GROWN FOLKS COLLECTIVE...");
-console.log("📡 TARGET PORT:", PORT);
 
 // Stripe Setup
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -465,7 +460,6 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 const uploadDir = join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
-  console.log(`📁 Created directory: ${uploadDir}`);
 }
 
 // -------------------------------------------------------
@@ -488,14 +482,10 @@ app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), asyn
       req.headers["stripe-signature"],
       process.env.STRIPE_WEBHOOK_SECRET
     );
-    
-    // Logic for payment success/failure goes here
-    
   } catch (err) {
     console.error("Webhook signature failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
-
   res.json({ received: true });
 });
 
@@ -516,18 +506,25 @@ app.use("/api/events",       eventRoutes);
 app.use("/api/partnerships", partnershipRoutes);
 app.use("/api/contact",      contactRoutes);
 app.use("/api/travel",       travelRoutes);
-
-// Admin/Protected
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
-// 10. Final Catch & Start
+// 10. Final Catch & Start (WAIT FOR DB FIRST)
 // -------------------------------------------------------
 app.use(globalErr);
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 GFC Server responding on PORT: ${PORT}`);
-  connectDB()
-    .then(() => console.log("✅ MongoDB Connection Established"))
-    .catch((err) => console.error("❌ MongoDB Connection Failed:", err.message));
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+    console.log("✅ MongoDB Connection Established");
+    
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 GFC Server responding on PORT: ${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ MongoDB Connection Failed:", err.message);
+    process.exit(1); // Stop the app if DB fails so Railway can restart it
+  }
+};
+
+startServer();
