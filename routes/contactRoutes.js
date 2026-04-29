@@ -4,7 +4,9 @@ import Contact from '../models/contactSchema.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
 /* -------------------------------------------------------
    POST /api/contact  — Public
@@ -40,6 +42,11 @@ router.post('/', async (req, res) => {
 
     // Send emails (non-blocking — don't fail the submission if email fails)
     try {
+      if (!resend) {
+        console.warn('RESEND_API_KEY is not set — skipping email notifications.');
+        throw new Error('Resend not configured');
+      }
+
       const eventSection = eventDetails?.eventType ? `
         <hr style="border:none;border-top:1px solid #eee;margin:16px 0" />
         <h3 style="margin:0 0 8px">Event Details</h3>
