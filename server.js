@@ -415,7 +415,7 @@ import contactRoutes from "./routes/contactRoutes.js";
 import travelRoutes from "./routes/travelRoutes.js";
 
 const app  = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 // Path handling for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -530,8 +530,8 @@ const startServer = async () => {
     const normalizedPort = Number(process.env.PORT) || 3001;
     
     // 3. Start the engine
-    app.listen(normalizedPort, "0.0.0.0", () => {
-      console.log(`🚀 GFC Server responding on PORT: ${normalizedPort}`);
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 GFC Server responding on PORT: ${PORT}`);
     });
 
   } catch (err) {
