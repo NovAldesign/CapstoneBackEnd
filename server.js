@@ -417,11 +417,12 @@ import travelRoutes from "./routes/travelRoutes.js";
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
+// Path handling for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
 // -------------------------------------------------------
-// 4. STRATEGIC CORS CONFIG (Manual Injection)
+// 4. STRATEGIC CORS CONFIG (Fixes Network Errors)
 // -------------------------------------------------------
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -429,6 +430,7 @@ app.use((req, res, next) => {
     "https://grownfolkscollective.com",
     "https://www.grownfolkscollective.com",
     "http://localhost:5173",
+    "http://localhost:3000",
     process.env.FRONTEND_URL
   ].filter(Boolean);
 
@@ -440,8 +442,7 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  // IMMEDIATELY return 204 for the browser's "Preflight" check
-  // This prevents the request from even reaching your routes if it's just a security check
+  // Handle Preflight: Browsers send OPTIONS before POST/PUT
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
   }
@@ -450,29 +451,25 @@ app.use((req, res, next) => {
 });
 
 // -------------------------------------------------------
-// 5. Logging & Initialization
+// 5. Initialization & Directory Safety
 // -------------------------------------------------------
 app.use(logReq);
 
 console.log("🛠️  BOOTING UP GROWN FOLKS COLLECTIVE...");
 console.log("📡 TARGET PORT:", PORT);
-console.log("📦 NODE_ENV:", process.env.NODE_ENV);
 
 // Stripe Setup
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
-// Ensure Uploads Directory exists at boot
-const uploadDir = join(__dirname, "uploads");
-const eventUploadDir = join(uploadDir, "events");
-[uploadDir, eventUploadDir].forEach((dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    console.log(`📁 Created directory: ${dir}`);
-  }
-});
+// Ensure Uploads Directory exists
+const uploadDir = join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log(`📁 Created directory: ${uploadDir}`);
+}
 
 // -------------------------------------------------------
-// 6. Health Check
+// 6. Health Check (For Railway pings)
 // -------------------------------------------------------
 app.get("/", (req, res) => {
   res.status(200).send("🚀 GFC API is live and healthy!");
@@ -491,17 +488,19 @@ app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), asyn
       req.headers["stripe-signature"],
       process.env.STRIPE_WEBHOOK_SECRET
     );
+    
+    // Logic for payment success/failure goes here
+    
   } catch (err) {
     console.error("Webhook signature failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Your Webhook Logic
   res.json({ received: true });
 });
 
 // -------------------------------------------------------
-// 8. Standard Middleware (After Webhook)
+// 8. Standard Middleware
 // -------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -517,10 +516,12 @@ app.use("/api/events",       eventRoutes);
 app.use("/api/partnerships", partnershipRoutes);
 app.use("/api/contact",      contactRoutes);
 app.use("/api/travel",       travelRoutes);
-app.use("/api/admin",        protect, restrictTo("admin"), adminRoutes);
+
+// Admin/Protected
+app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
-// 10. Error Handling & Start
+// 10. Final Catch & Start
 // -------------------------------------------------------
 app.use(globalErr);
 
