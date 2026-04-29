@@ -422,28 +422,29 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
 // -------------------------------------------------------
-// 4. STRATEGIC CORS CONFIG (Fixes Network Errors)
+// 4. STRATEGIC CORS CONFIG (The Standard Way)
 // -------------------------------------------------------
-app.use(cors({
-  origin: (origin, callback) => {
-    const allowedOrigins = [
-      "https://grownfolkscollective.com",
-      "https://www.grownfolkscollective.com",
-      "http://localhost:5173",
-      "http://localhost:3000",
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
+const allowedOrigins = [
+  "https://grownfolkscollective.com",
+  "https://www.grownfolkscollective.com",
+  "http://localhost:5173",
+  "http://localhost:3000"
+];
 
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || allowedOrigins.includes(origin)) {
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
+  credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-  credentials: true
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
 }));
 
 // -------------------------------------------------------
