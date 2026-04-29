@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 const partnershipSchema = new mongoose.Schema({
     companyName: { type: String, required: true },
