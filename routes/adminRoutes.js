@@ -1,4 +1,5 @@
 import express from "express";
+import jwt from "jsonwebtoken"; 
 import path from "path";
 import Membership from "../models/membershipSchema.js";
 import Admin from "../models/adminSchema.js";
@@ -33,23 +34,48 @@ router.get("/seed-all", async (req, res, next) => {
 
 // --- 2. ADMIN AUTH & LOGIN ---
 router.post("/admin/login", async (req, res, next) => {
-    try {
-        const { email, password, accessKey } = req.body;
-        const admin = await Admin.findOne({ email });
+  try {
+    const { email, password, accessKey } = req.body;
+    const admin = await Admin.findOne({ email });
 
-        if (!admin) return res.status(401).json({ error: "Invalid Credentials" });
+    if (!admin) return res.status(401).json({ error: "Invalid Credentials" });
 
-        const isPasswordValid = await admin.comparePassword(password);
-        const isKeyValid = [process.env.ADMIN_KEY, "GFC_SECURE_99", "GFC_SECURE_88"].includes(accessKey);
+    const isPasswordValid = await admin.comparePassword(password);
 
-        if (isPasswordValid && isKeyValid) {
-            admin.lastAction = "Login Success";
-            await admin.save();
-            res.json({ message: "Access Granted", admin: { name: admin.name, role: admin.role } });
-        } else {
-            res.status(401).json({ error: "Unauthorized" });
-        }
-    } catch (err) { next(err); }
+    // ✅ Move access keys to env variables
+    const validKeys = [
+      process.env.ADMIN_KEY,
+      process.env.ADMIN_KEY_2,
+      process.env.ADMIN_KEY_3,
+    ].filter(Boolean);
+    const isKeyValid = validKeys.includes(accessKey);
+
+    if (!isPasswordValid || !isKeyValid) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // ✅ Issue a JWT so protect() works on all admin routes
+    const token = jwt.sign(
+      {
+        id:    admin._id,
+        email: admin.email,
+        name:  admin.name,
+        role:  admin.role,   // "Admin" or "Moderator"
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '12h' }
+    );
+
+    admin.lastAction = "Login Success";
+    await admin.save();
+
+    res.json({
+      message: "Access Granted",
+      token,
+      admin: { name: admin.name, role: admin.role, email: admin.email },
+    });
+
+  } catch (err) { next(err); }
 });
 
 // --- 3. APPLICANT / MEMBER ROUTES ---
