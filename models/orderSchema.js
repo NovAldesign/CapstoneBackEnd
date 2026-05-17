@@ -26,25 +26,25 @@ const OrderSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    buyerPhone: {               // ← NEW
+      type: String,
+      default: '',
+    },
     unitPrice: {
       type: Number,
       required: true,
-      // in cents
     },
     subtotal: {
       type: Number,
       required: true,
-      // in cents
     },
     discount: {
       type: Number,
       default: 0,
-      // in cents
     },
     total: {
       type: Number,
       required: true,
-      // in cents
     },
     promoCode: {
       type: String,
@@ -64,6 +64,14 @@ const OrderSchema = new mongoose.Schema(
       enum: ['pending', 'succeeded', 'failed', 'refunded'],
       default: 'pending',
     },
+    checkedIn: {                // ← NEW
+      type: Boolean,
+      default: false,
+    },
+    checkedInAt: {              // ← NEW
+      type: Date,
+      default: null,
+    },
     confirmationCode: {
       type: String,
       unique: true,
@@ -72,7 +80,6 @@ const OrderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-generate confirmation code before saving
 OrderSchema.pre('save', function (next) {
   if (!this.confirmationCode) {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -86,5 +93,4 @@ OrderSchema.pre('save', function (next) {
 });
 
 const Order = mongoose.model('Order', OrderSchema);
-
 export default Order;

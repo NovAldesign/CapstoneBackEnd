@@ -82,8 +82,10 @@ const membershipSchema = new mongoose.Schema(
             type: Date,
             default: Date.now
         }
-    }
+    },
+ { timestamps: true } 
 );
+
 
 // --- PASSWORD ENCRYPTION LOGIC ---
 //

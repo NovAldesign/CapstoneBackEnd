@@ -73,10 +73,33 @@ router.get('/', async (req, res, next) => {
 router.get('/admin/all', protect, restrictTo('admin'), async (req, res, next) => {
   try {
     const events = await Event.find().sort({ date: -1 });
-    res.json(events);
+
+    const eventsWithAttendees = await Promise.all(
+      events.map(async (ev) => {
+        const orders = await Order.find({
+          event: ev._id,
+          paymentStatus: 'succeeded',
+        }).sort({ createdAt: -1 });
+
+        const attendees = orders.map(o => ({
+          firstName:   o.buyerName?.split(' ')[0] || '',
+          lastName:    o.buyerName?.split(' ').slice(1).join(' ') || '',
+          email:       o.buyerEmail,
+          phone:       o.buyerPhone || '',
+          ticketType:  o.ticketType,
+          amountPaid:  o.total,
+          checkedIn:   o.checkedIn || false,
+          confirmationCode: o.confirmationCode,
+          createdAt:   o.createdAt,
+        }));
+
+        return { ...ev.toJSON(), attendees };
+      })
+    );
+
+    res.json(eventsWithAttendees);
   } catch (err) { next(err); }
 });
-
 /* -------------------------------------------------------
    GET /api/events/:id
    Public — single event (no promo codes exposed)
