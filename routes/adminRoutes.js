@@ -45,8 +45,8 @@ router.post("/admin/login", async (req, res, next) => {
     // ✅ Move access keys to env variables
     const validKeys = [
       process.env.ADMIN_KEY,
-      process.env.ADMIN_KEY_2,
-      process.env.ADMIN_KEY_3,
+    //   process.env.ADMIN_KEY_2,
+    //   process.env.ADMIN_KEY_3,
     ].filter(Boolean);
     const isKeyValid = validKeys.includes(accessKey);
 
