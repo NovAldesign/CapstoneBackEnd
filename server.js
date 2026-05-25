@@ -386,7 +386,6 @@
 // //     console.log(`🚀 GFC Server running on PORT: ${PORT}`);
 // //     console.log(`📅 System Date: ${new Date().toLocaleDateString()}`);
 // });
-
 // 1. Core Config & Environment — MUST BE FIRST
 import dotenv from "dotenv";
 dotenv.config();
@@ -465,7 +464,6 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 // -------------------------------------------------------
 // 6. Serve Frontend Static Built Assets
 // -------------------------------------------------------
-// This handles connecting your built React application cleanly to your server
 app.use(express.static(join(__dirname, "../frontend/dist"))); 
 
 // -------------------------------------------------------
@@ -509,7 +507,6 @@ app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 // -------------------------------------------------------
 // 10. FRONTEND SPA CATCH-ALL ROUTE (Fixes 405/404 on Refresh)
 // -------------------------------------------------------
-// If a request comes in that doesn't start with /api, serve the React front end
 app.get("*", (req, res) => {
   res.sendFile(join(__dirname, "../frontend/dist/index.html"));
 });
@@ -525,19 +522,23 @@ app.use((err, req, res, next) => {
 
 app.use(globalErr);
 
+// -------------------------------------------------------
+// 12. Optimized Startup Pipeline (Fixes Railway Healthchecks)
+// -------------------------------------------------------
 const startServer = async () => {
-  try {
-    await connectDB();
-    console.log("✅ MongoDB Connection Established");
-
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 GFC Server responding on PORT: ${PORT}`);
-    });
-
-  } catch (err) {
-    console.error("❌ Critical Startup Error:", err.message);
-    process.exit(1);
-  }
+  // Bind the port instantly so Railway registers the application as online right away
+  app.listen(PORT, "0.0.0.0", async () => {
+    console.log(`🚀 GFC Lean Server successfully responding on PORT: ${PORT}`);
+    
+    // Connect to database asynchronously in the background
+    try {
+      await connectDB();
+      console.log("✅ MongoDB Connection Established");
+    } catch (err) {
+      console.error("❌ Deferred Database Connection Error:", err.message);
+      // We don't call process.exit(1) here so the app remains up to stream logs back to you
+    }
+  });
 };
 
 // Execute the start
