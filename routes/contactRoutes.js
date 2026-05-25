@@ -1,6 +1,6 @@
 import express from 'express';
 import { Resend } from 'resend';
-import Contact from '../models/contactSchema.js';
+import Contact from '../models/contactSchema.js'; // This cleanly imports our fixed model default export now!
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -56,10 +56,10 @@ router.post('/', async (req, res) => {
         <p><strong>Budget:</strong> ${eventDetails.budget || 'Not specified'}</p>
       ` : '';
 
-      // 1. Notify you (admin)
+      // 1. Notify you (admin fallback included for environmental variable stability)
       await resend.emails.send({
         from: 'GFC Contact Form <noreply@grownfolkscollective.com>',
-        to:   process.env.ADMIN_EMAIL,
+        to:   process.env.ADMIN_EMAIL || 'hello@grownfolkscollective.com',
         subject: `New GFC Message — ${reason}`,
         html: `
           <div style="font-family:sans-serif;max-width:600px;margin:auto">
@@ -100,7 +100,6 @@ router.post('/', async (req, res) => {
       await contact.save();
 
     } catch (emailErr) {
-      // Log but don't fail — submission is already saved
       console.error('Email notification failed:', emailErr);
     }
 
@@ -112,7 +111,6 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error('Contact form error:', err);
 
-    // Return Mongoose validation errors clearly
     if (err.name === 'ValidationError') {
       const messages = Object.values(err.errors).map(e => e.message);
       return res.status(400).json({ error: messages.join('. ') });
