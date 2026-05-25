@@ -396,7 +396,6 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import fs from "fs";
 import Stripe from "stripe";
 
 // 2. Middleware & DB Imports
@@ -444,7 +443,7 @@ const corsOptions = {
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-  optionsSuccessStatus: 204 // Some older browsers choke on 204
+  optionsSuccessStatus: 204
 };
 
 // Apply CORS to all routes
@@ -454,27 +453,20 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // -------------------------------------------------------
-// 5. Initialization & Directory Safety
+// 5. Initialization
 // -------------------------------------------------------
 app.use(logReq);
 
-console.log("🛠️  BOOTING UP GROWN FOLKS COLLECTIVE...");
+console.log("🛠️  BOOTING UP LEAN GROWN FOLKS COLLECTIVE SERVER...");
 
 // Stripe Setup
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
-// Ensure Uploads Directory exists
-const uploadDir = join(process.cwd(), "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
 // -------------------------------------------------------
-// 6. Health Check
+// 6. Serve Frontend Static Built Assets
 // -------------------------------------------------------
-app.get("/", (req, res) => {
-  res.status(200).send("🚀 GFC API is live and healthy!");
-});
+// This handles connecting your built React application cleanly to your server
+app.use(express.static(join(__dirname, "../frontend/dist"))); 
 
 // -------------------------------------------------------
 // 7. STRIPE WEBHOOK — MUST be before express.json()
@@ -501,10 +493,9 @@ app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), asyn
 // -------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/uploads", express.static(uploadDir));
 
 // -------------------------------------------------------
-// 9. Routes
+// 9. API Routes
 // -------------------------------------------------------
 app.use("/api",              systemRoutes);
 app.use("/api/membership",   membershipRoutes);
@@ -516,7 +507,15 @@ app.use("/api/travel",       travelRoutes);
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
-// 10. Final Catch & Start
+// 10. FRONTEND SPA CATCH-ALL ROUTE (Fixes 405/404 on Refresh)
+// -------------------------------------------------------
+// If a request comes in that doesn't start with /api, serve the React front end
+app.get("*", (req, res) => {
+  res.sendFile(join(__dirname, "../frontend/dist/index.html"));
+});
+
+// -------------------------------------------------------
+// 11. Final Catch & Start
 // -------------------------------------------------------
 app.use((err, req, res, next) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
@@ -531,7 +530,6 @@ const startServer = async () => {
     await connectDB();
     console.log("✅ MongoDB Connection Established");
 
-    // ✅ Remove the normalizedPort line — just use PORT
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 GFC Server responding on PORT: ${PORT}`);
     });
@@ -541,7 +539,6 @@ const startServer = async () => {
     process.exit(1);
   }
 };
-
 
 // Execute the start
 startServer();
