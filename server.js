@@ -113,11 +113,12 @@ app.use("/api/travel",       travelRoutes);
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
-// 8.5. STRIPE CANCEL REDIRECT LAYER
+// 8.5. STRIPE CANCEL REDIRECT LAYER (Appends tracking state parameters)
 // -------------------------------------------------------
 app.get("/membership/cancelled", (req, res) => {
   const frontendUrl = process.env.FRONTEND_URL || "https://grownfolkscollective.com";
-  return res.redirect(`${frontendUrl}/membership`);
+  // Appending ?cancelled=true lets your React frontend know it needs to pull info from cache
+  return res.redirect(`${frontendUrl}/membership?cancelled=true`);
 });
 
 // -------------------------------------------------------

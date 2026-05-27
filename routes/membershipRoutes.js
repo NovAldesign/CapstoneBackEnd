@@ -73,24 +73,26 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: `No Stripe price configured for tier: ${saved.tier}` });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      customer_email: saved.email,
-      metadata: {
-        memberId: saved._id.toString(),
-        tier: saved.tier,
-        firstName: saved.firstName,
-        lastName: saved.lastName,
-      },
-      success_url: `${process.env.CLIENT_URL}/membership/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${process.env.CLIENT_URL}/membership/cancelled`,
-    });
+  const session = await stripe.checkout.sessions.create({
+  mode: 'subscription',
+  line_items: [
+    {
+      price: priceId,
+      quantity: 1,
+    },
+  ],
+  customer_email: saved.email,
+  metadata: {
+    memberId: saved._id.toString(),
+    tier: saved.tier,
+    firstName: saved.firstName,
+    lastName: saved.lastName,
+  },
+  success_url: `${process.env.CLIENT_URL}/membership/success?session_id={CHECKOUT_SESSION_ID}`,
+  
+  // 🔥 UPDATE THIS LINE: Append the saved member ID to the cancel URL
+  cancel_url:  `${process.env.CLIENT_URL}/membership?cancelled=true&id=${saved._id.toString()}`,
+});
 
     // 1d. Return member + Stripe checkout URL to frontend
     return res.status(201).json({
