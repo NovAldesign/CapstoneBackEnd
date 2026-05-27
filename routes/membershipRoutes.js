@@ -9,7 +9,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --- Tier price map (match these to your Stripe Price IDs) ---
 const TIER_PRICE_IDS = {
-  Social:   process.env.STRIPE_PRICE_SOCIAL,   // $39/mo
+  Social: process.env.STRIPE_PRICE_SOCIAL,   // $39/mo
   Founding: process.env.STRIPE_PRICE_FOUNDING, // $69/mo
 };
 
@@ -73,26 +73,26 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: `No Stripe price configured for tier: ${saved.tier}` });
     }
 
-  const session = await stripe.checkout.sessions.create({
-  mode: 'subscription',
-  line_items: [
-    {
-      price: priceId,
-      quantity: 1,
-    },
-  ],
-  customer_email: saved.email,
-  metadata: {
-    memberId: saved._id.toString(),
-    tier: saved.tier,
-    firstName: saved.firstName,
-    lastName: saved.lastName,
-  },
-  success_url: `${process.env.CLIENT_URL}/membership/success?session_id={CHECKOUT_SESSION_ID}`,
-  
-  // 🔥 UPDATE THIS LINE: Append the saved member ID to the cancel URL
-  cancel_url:  `${process.env.CLIENT_URL}/membership?cancelled=true&id=${saved._id.toString()}`,
-});
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      customer_email: saved.email,
+      metadata: {
+        memberId: saved._id.toString(),
+        tier: saved.tier,
+        firstName: saved.firstName,
+        lastName: saved.lastName,
+      },
+      success_url: `${process.env.CLIENT_URL}/membership/success?session_id={CHECKOUT_SESSION_ID}`,
+
+      // 🔥 UPDATE THIS LINE: Append the saved member ID to the cancel URL
+      cancel_url: `${process.env.CLIENT_URL}/membership?cancelled=true&id=${saved._id.toString()}`,
+    });
 
     // 1d. Return member + Stripe checkout URL to frontend
     return res.status(201).json({
