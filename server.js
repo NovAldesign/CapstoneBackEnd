@@ -113,6 +113,14 @@ app.use("/api/travel",       travelRoutes);
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
+// 8.5. STRIPE CANCEL REDIRECT LAYER
+// -------------------------------------------------------
+app.get("/membership/cancelled", (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || "https://grownfolkscollective.com";
+  return res.redirect(`${frontendUrl}/membership`);
+});
+
+// -------------------------------------------------------
 // 9. DEDICATED ROOT HEALTH CHECK ROUTE (Fixes Railway Health Check Timeouts)
 // -------------------------------------------------------
 app.get("/", (req, res) => {
