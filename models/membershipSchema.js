@@ -22,7 +22,7 @@ const membershipSchema = new mongoose.Schema(
         tier: {
             type: String,
             enum: ["Social", "Founding"],
-            default: "Founding",
+            required: true
         },
         status: {
             type: String,
