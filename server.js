@@ -462,12 +462,7 @@ console.log("🛠️  BOOTING UP LEAN GROWN FOLKS COLLECTIVE SERVER...");
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 // -------------------------------------------------------
-// 6. Serve Frontend Static Built Assets
-// -------------------------------------------------------
-app.use(express.static(join(__dirname, "../frontend/dist"))); 
-
-// -------------------------------------------------------
-// 7. STRIPE WEBHOOK — MUST be before express.json()
+// 6. STRIPE WEBHOOK — MUST be before express.json()
 // -------------------------------------------------------
 app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
   if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) return res.status(500).send("Config error.");
@@ -487,13 +482,13 @@ app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), asyn
 });
 
 // -------------------------------------------------------
-// 8. Standard Middleware (After CORS/Webhooks)
+// 7. Standard Middleware (After CORS/Webhooks)
 // -------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // -------------------------------------------------------
-// 9. API Routes
+// 8. API Routes (Brought Forward to Intercept Before Static Files)
 // -------------------------------------------------------
 app.use("/api",              systemRoutes);
 app.use("/api/membership",   membershipRoutes);
@@ -503,6 +498,11 @@ app.use("/api/partnerships", partnershipRoutes);
 app.use("/api/contact",      contactRoutes);
 app.use("/api/travel",       travelRoutes);
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
+
+// -------------------------------------------------------
+// 9. Serve Frontend Static Built Assets (Fallback Layer)
+// -------------------------------------------------------
+app.use(express.static(join(__dirname, "../frontend/dist"))); 
 
 // -------------------------------------------------------
 // 10. FRONTEND SPA CATCH-ALL ROUTE (Fixes 405/404 on Refresh)
