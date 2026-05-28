@@ -54,6 +54,97 @@ const parseFormFields = (body) => {
 };
 
 /* -------------------------------------------------------
+   POST /api/events/checkout
+   Public — Multi-ticket/Multi-event bundle checkout (Capped at 15%)
+------------------------------------------------------- */
+router.post('/checkout', async (req, res, next) => {
+  try {
+    if (!stripe) {
+      return res.status(500).json({ error: 'Stripe is not configured on the server.' });
+    }
+
+    const { cartItems, customerEmail } = req.body;
+    /*
+      cartItems expected shape array from React context:
+      [
+        { 
+          eventId: "65f...", 
+          eventName: "Spades Tournament & Game Night", 
+          ticketTypeId: "65f123...",
+          ticketTypeName: "General Admission", 
+          priceInCents: 3000, 
+          quantity: 2 
+        }
+      ]
+    */
+
+    if (!cartItems || cartItems.length === 0) {
+      return res.status(400).json({ error: 'Your cart is completely empty.' });
+    }
+
+    // 1. Calculate how many UNIQUE events are chosen to measure bundle discount tiers
+    const uniqueEventIds = [...new Set(cartItems.map(item => item.eventId))];
+
+    // 2. Set multi-event bundle discount scales (Capped strictly at 15% max ceiling)
+    let discountMultiplier = 1.0;
+    let discountLabel = '';
+
+    if (uniqueEventIds.length === 2) {
+      discountMultiplier = 0.90; // 10% off total bundle ticket line item rates
+      discountLabel = ' (10% Multi-Event Bundle Discount Applied)';
+    } else if (uniqueEventIds.length >= 3) {
+      discountMultiplier = 0.85; // 15% off capped max rate for 3+ distinct events
+      discountLabel = ' (15% Max Multi-Event Bundle Discount Applied)';
+    }
+
+    // 3. Map items dynamically into an authorized Stripe Line Items configuration
+    const lineItems = cartItems.map((item) => {
+      // Raw integer cents rounding to dodge float pricing anomalies inside Stripe processing layers
+      const finalPriceInCents = Math.round(item.priceInCents * discountMultiplier);
+
+      return {
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `${item.eventName} — ${item.ticketTypeName}`,
+            description: discountMultiplier < 1.0 
+              ? `Ending social isolation.${discountLabel}` 
+              : 'Standard Community Event Admission Pass',
+          },
+          unit_amount: finalPriceInCents,
+        },
+        quantity: item.quantity,
+      };
+    });
+
+    // 4. Generate the verified safe Stripe Checkout Session window
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      customer_email: customerEmail,
+      line_items: lineItems,
+      success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events?cancelled=true`,
+      
+      // Cache structural payload metadata so your incoming event hooks webhook file handles orders creation flawlessly later
+      metadata: {
+        cartDetails: JSON.stringify(cartItems.map(i => ({
+          eventId: i.eventId,
+          ticketTypeId: i.ticketTypeId,
+          ticketName: i.ticketTypeName,
+          qty: i.quantity,
+          pricePaid: Math.round(i.priceInCents * discountMultiplier)
+        }))),
+        isBundleCheckout: (discountMultiplier < 1.0).toString()
+      }
+    });
+
+    return res.status(201).json({ url: session.url });
+
+  } catch (err) { next(err); }
+});
+
+/* -------------------------------------------------------
    GET /api/events
    Public — published events only, upcoming first
 ------------------------------------------------------- */
@@ -100,6 +191,7 @@ router.get('/admin/all', protect, restrictTo('admin'), async (req, res, next) =>
     res.json(eventsWithAttendees);
   } catch (err) { next(err); }
 });
+
 /* -------------------------------------------------------
    GET /api/events/:id
    Public — single event (no promo codes exposed)
@@ -243,7 +335,6 @@ router.post('/:id/create-payment-intent', async (req, res, next) => {
 
     const total = subtotal - discount;
 
-    // Stripe requires amount > 0; handle free/fully-discounted tickets
     if (total === 0) {
       return res.status(400).json({
         error: 'Total is $0 — use the free checkout flow instead of Stripe.',
