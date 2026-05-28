@@ -20,10 +20,10 @@ router.post('/', async (req, res, next) => {
     });
     const savedMember = await newMember.save();
 
-    // Determine pricing plan based on tier selected
+    // 🔥 FIXED: Adjusted map variables to match your backend .env keys exactly
     const priceId = req.body.tier === 'Founding' 
-      ? process.env.STRIPE_FOUNDING_PRICE_ID 
-      : process.env.STRIPE_SOCIAL_PRICE_ID;
+      ? process.env.STRIPE_PRICE_FOUNDING 
+      : process.env.STRIPE_PRICE_SOCIAL;
 
     // 2. Generate a secure custom Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
@@ -34,7 +34,7 @@ router.post('/', async (req, res, next) => {
       success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/membership/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.BACKEND_URL || 'https://capstonebackend-production-87ed.up.railway.app'}/membership/cancelled`,
       
-      // 🔥 SAFE BACKUP CHECK: Prevents server crash if savedMember.name is missing or malformed
+      // SAFE BACKUP CHECK: Prevents server crash if savedMember.name is missing or malformed
       metadata: {
         memberId: savedMember._id.toString(),
         tier: savedMember.tier || 'Social',
