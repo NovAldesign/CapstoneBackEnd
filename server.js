@@ -9,11 +9,13 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import Stripe from "stripe";
 import mongoose from "mongoose";
+import { Resend } from "resend"; // Added Resend Import
 
 // 2. Middleware & DB Imports
 import { logReq, globalErr } from "./middleware/middleware.js";
 import { protect, restrictTo } from "./middleware/authMiddleware.js";
 import connectDB from "./db/conn.js";
+import Membership from "./models/membershipSchema.js"; // Added Membership Schema Import
 
 // 3. Route Imports
 import systemRoutes from "./routes/systemRoutes.js";
@@ -71,28 +73,23 @@ app.use(logReq);
 
 console.log("🛠️  BOOTING UP LEAN GROWN FOLKS COLLECTIVE SERVER...");
 
-// Stripe Setup
+// Stripe & Resend Initializations
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // -------------------------------------------------------
-// 6. STRIPE WEBHOOK — MUST be before express.json()
+// 6. STRIPE WEBHOOK BYPASS FILTER
 // -------------------------------------------------------
-app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
-  if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) return res.status(500).send("Config error.");
-
-  let stripeEvent;
-  try {
-    stripeEvent = stripe.webhooks.constructEvent(
-      req.body,
-      req.headers["stripe-signature"],
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (err) {
-    console.error("Webhook signature failed:", err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+// This tells Express to parse normal JSON everywhere EXCEPT on our raw Stripe route
+app.use((req, res, next) => {
+  if (req.originalUrl === "/api/membership/webhook") {
+    express.raw({ type: "application/json" })(req, res, next);
+  } else {
+    express.json()(req, res, next);
   }
-  res.json({ received: true });
 });
+
+app.use(express.urlencoded({ extended: true }));
 
 // -------------------------------------------------------
 // 7. Standard Middleware (After CORS/Webhooks)
@@ -117,7 +114,6 @@ app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 // -------------------------------------------------------
 app.get("/membership/cancelled", (req, res) => {
   const frontendUrl = process.env.FRONTEND_URL || "https://grownfolkscollective.com";
-  // Appending ?cancelled=true lets your React frontend know it needs to pull info from cache
   return res.redirect(`${frontendUrl}/membership?cancelled=true`);
 });
 
@@ -161,11 +157,9 @@ app.use(globalErr);
 // 13. Optimized Startup Pipeline
 // -------------------------------------------------------
 const startServer = async () => {
-  // Bind the port instantly so Railway registers the application as online right away
   app.listen(PORT, "0.0.0.0", async () => {
     console.log(`🚀 GFC Lean Server successfully responding on PORT: ${PORT}`);
     
-    // Connect to database asynchronously in the background
     try {
       await connectDB();
       console.log("✅ MongoDB Connection Established");
