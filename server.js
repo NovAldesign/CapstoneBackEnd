@@ -9,13 +9,13 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import Stripe from "stripe";
 import mongoose from "mongoose";
-import { Resend } from "resend"; // Added Resend Import
+import { Resend } from "resend"; 
 
 // 2. Middleware & DB Imports
 import { logReq, globalErr } from "./middleware/middleware.js";
 import { protect, restrictTo } from "./middleware/authMiddleware.js";
 import connectDB from "./db/conn.js";
-import Membership from "./models/membershipSchema.js"; // Added Membership Schema Import
+import Membership from "./models/membershipSchema.js"; 
 
 // 3. Route Imports
 import systemRoutes from "./routes/systemRoutes.js";
@@ -66,9 +66,7 @@ app.use(cors(corsOptions));
 // Explicitly handle preflight requests for all routes
 app.options('*', cors(corsOptions));
 
-// -------------------------------------------------------
-// 5. Initialization
-// -------------------------------------------------------
+// Initialize general request logging
 app.use(logReq);
 
 console.log("🛠️  BOOTING UP LEAN GROWN FOLKS COLLECTIVE SERVER...");
@@ -78,30 +76,29 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // -------------------------------------------------------
-// 6. STRIPE WEBHOOK BYPASS FILTER
+// 5. 🔥 FIX: ISOLATED RAW STRIPE WEBHOOK ROUTE MOUNTING
 // -------------------------------------------------------
-// This tells Express to parse normal JSON everywhere EXCEPT on our raw Stripe route
-app.use((req, res, next) => {
-  if (req.originalUrl === "/api/membership/webhook") {
+// We intercept the webhook right here, using express.raw directly 
+// BEFORE any global express.json middleware can corrupt the buffer headers.
+app.use("/api/membership", (req, res, next) => {
+  if (req.path === "/webhook") {
     express.raw({ type: "application/json" })(req, res, next);
   } else {
-    express.json()(req, res, next);
+    next();
   }
 });
 
-app.use(express.urlencoded({ extended: true }));
-
 // -------------------------------------------------------
-// 7. Standard Middleware (After CORS/Webhooks)
+// 6. GLOBAL JSON PARSERS (Safe now that webhook is bypassed)
 // -------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // -------------------------------------------------------
-// 8. Dynamic API Routes
+// 7. Dynamic API Routes
 // -------------------------------------------------------
 app.use("/api",              systemRoutes);
-app.use("/api/membership",   membershipRoutes);
+app.use("/api/membership",   membershipRoutes); // Passes clean raw data to /webhook 
 app.use("/api/auth",         authRoutes);
 app.use("/api/events",       eventRoutes);
 app.use("/api/partnerships", partnershipRoutes);
@@ -110,7 +107,7 @@ app.use("/api/travel",       travelRoutes);
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
-// 8.5. STRIPE CANCEL REDIRECT LAYER (Appends tracking state parameters)
+// 8. STRIPE CANCEL REDIRECT LAYER
 // -------------------------------------------------------
 app.get("/membership/cancelled", (req, res) => {
   const frontendUrl = process.env.FRONTEND_URL || "https://grownfolkscollective.com";
@@ -118,7 +115,7 @@ app.get("/membership/cancelled", (req, res) => {
 });
 
 // -------------------------------------------------------
-// 9. DEDICATED ROOT HEALTH CHECK ROUTE (Fixes Railway Health Check Timeouts)
+// 9. DEDICATED ROOT HEALTH CHECK ROUTE
 // -------------------------------------------------------
 app.get("/", (req, res) => {
   return res.status(200).json({
@@ -158,7 +155,7 @@ app.use(globalErr);
 // -------------------------------------------------------
 const startServer = async () => {
   app.listen(PORT, "0.0.0.0", async () => {
-    console.log(`🚀 GFC Lean Server successfully responding on PORT: ${PORT}`);
+    console.log("🚀 GFC Lean Server successfully responding on PORT:", PORT);
     
     try {
       await connectDB();
