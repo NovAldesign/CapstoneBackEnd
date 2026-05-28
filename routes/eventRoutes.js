@@ -54,8 +54,22 @@ const parseFormFields = (body) => {
 };
 
 /* -------------------------------------------------------
+   GET /api/events
+   Public — published events only, upcoming first
+------------------------------------------------------- */
+router.get('/', async (req, res, next) => {
+  try {
+    const events = await Event.find({ status: 'published' })
+      .select('-promoCodes')
+      .sort({ date: 1 });
+    res.json(events);
+  } catch (err) { next(err); }
+});
+
+/* -------------------------------------------------------
    POST /api/events/checkout
    Public — Multi-ticket/Multi-event bundle checkout (Capped at 15%)
+   CRITICAL NOTE: Left positioned above /:id parameters to prevent routing conflicts.
 ------------------------------------------------------- */
 router.post('/checkout', async (req, res, next) => {
   try {
@@ -64,19 +78,6 @@ router.post('/checkout', async (req, res, next) => {
     }
 
     const { cartItems, customerEmail } = req.body;
-    /*
-      cartItems expected shape array from React context:
-      [
-        { 
-          eventId: "65f...", 
-          eventName: "Spades Tournament & Game Night", 
-          ticketTypeId: "65f123...",
-          ticketTypeName: "General Admission", 
-          priceInCents: 3000, 
-          quantity: 2 
-        }
-      ]
-    */
 
     if (!cartItems || cartItems.length === 0) {
       return res.status(400).json({ error: 'Your cart is completely empty.' });
@@ -121,7 +122,7 @@ router.post('/checkout', async (req, res, next) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
-      customer_email: customerEmail,
+      customer_email: customerEmail || undefined,
       line_items: lineItems,
       success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events?cancelled=true`,
@@ -141,19 +142,6 @@ router.post('/checkout', async (req, res, next) => {
 
     return res.status(201).json({ url: session.url });
 
-  } catch (err) { next(err); }
-});
-
-/* -------------------------------------------------------
-   GET /api/events
-   Public — published events only, upcoming first
-------------------------------------------------------- */
-router.get('/', async (req, res, next) => {
-  try {
-    const events = await Event.find({ status: 'published' })
-      .select('-promoCodes')
-      .sort({ date: 1 });
-    res.json(events);
   } catch (err) { next(err); }
 });
 
@@ -295,7 +283,7 @@ router.post('/:id/validate-promo', async (req, res, next) => {
 
 /* -------------------------------------------------------
    POST /api/events/:id/create-payment-intent
-   Public — Stripe payment intent + order creation
+   Legacy Single-Event Stripe Flow — Kept for backwards compatibility
 ------------------------------------------------------- */
 router.post('/:id/create-payment-intent', async (req, res, next) => {
   try {
