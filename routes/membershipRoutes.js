@@ -20,7 +20,7 @@ router.post('/', async (req, res, next) => {
     });
     const savedMember = await newMember.save();
 
-    // 🔥 FIXED: Adjusted map variables to match your backend .env keys exactly
+    // Adjusted map variables to match your backend .env keys exactly
     const priceId = req.body.tier === 'Founding' 
       ? process.env.STRIPE_PRICE_FOUNDING 
       : process.env.STRIPE_PRICE_SOCIAL;
@@ -38,7 +38,7 @@ router.post('/', async (req, res, next) => {
       metadata: {
         memberId: savedMember._id.toString(),
         tier: savedMember.tier || 'Social',
-        firstName: savedMember.name ? savedMember.name.split(' ')[0] : 'Member'
+        firstName: savedMember.firstName || 'Member'
       }
     });
 
@@ -84,10 +84,12 @@ router.post('/webhook', async (req, res) => {
         console.log(`✅ Member database status advanced to active for ID: ${memberId}`);
       }
 
-      // 2. Dispatch the automated Resend template instantly from community@
+      // 2. Dispatch automated email confirmations using your verified catch-all template
       if (customerEmail) {
+        
+        // ── EMAIL A: Welcome confirmation sent directly to the new customer ──
         await resend.emails.send({
-          from: 'GFC <community@grownfolkscollective.com>',
+          from: 'GFC <noreply@grownfolkscollective.com>',
           to: customerEmail,
           subject: "You're In! Welcome to the Grown Folks Collective",
           html: `
@@ -176,7 +178,26 @@ router.post('/webhook', async (req, res) => {
             </html>
           `
         });
-        console.log(`📧 Success automation email dispatched out to: ${customerEmail}`);
+        console.log(`📧 Success onboarding email dispatched out to member: ${customerEmail}`);
+
+        // ── EMAIL B: Internal notification sent directly to your team account ──
+        await resend.emails.send({
+          from: 'GFC Registration Monitor <noreply@grownfolkscollective.com>',
+          to: 'community@grownfolkscollective.com',
+          subject: `🔔 New Member Activation: ${firstName || 'A User'} has joined!`,
+          html: `
+            <div style="font-family: sans-serif; padding: 20px; color: #002147;">
+              <h2 style="border-bottom: 2px solid #C5A059; padding-bottom: 10px;">New Membership Activated!</h2>
+              <p><strong>First Name:</strong> ${firstName || 'N/A'}</p>
+              <p><strong>Email Address:</strong> ${customerEmail}</p>
+              <p><strong>Tier Selected:</strong> ${tier || 'Social'}</p>
+              <p><strong>Database ID Link:</strong> ${memberId || 'N/A'}</p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+              <p style="color: #888; font-size: 12px;">This transaction has completed processing via Stripe and has updated Mongo status to active.</p>
+            </div>
+          `
+        });
+        console.log(`📢 Internal notification email dispatched to community@grownfolkscollective.com`);
       }
 
     } catch (error) {
