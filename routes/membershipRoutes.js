@@ -1,7 +1,7 @@
 import express from 'express';
 import Stripe from 'stripe';
 import { Resend } from 'resend';
-import Membership from './models/membershipSchema.js'; // Adjust path to schema
+import Membership from '../models/membershipSchema.js';
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
