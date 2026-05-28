@@ -33,11 +33,12 @@ router.post('/', async (req, res, next) => {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/membership/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.BACKEND_URL || 'https://capstonebackend-production-87ed.up.railway.app'}/membership/cancelled`,
-      // Pass crucial identifiers inside metadata so the webhook can process them later
+      
+      // 🔥 SAFE BACKUP CHECK: Prevents server crash if savedMember.name is missing or malformed
       metadata: {
         memberId: savedMember._id.toString(),
-        tier: savedMember.tier,
-        firstName: savedMember.name.split(' ')[0]
+        tier: savedMember.tier || 'Social',
+        firstName: savedMember.name ? savedMember.name.split(' ')[0] : 'Member'
       }
     });
 
@@ -45,7 +46,9 @@ router.post('/', async (req, res, next) => {
     return res.status(201).json({ url: session.url, memberId: savedMember._id });
   } catch (error) {
     console.error("❌ Error initiating application workflow:", error.message);
-    next(error);
+    
+    // Instead of crashing, let's catch the error and pass a clean response back to the client
+    return res.status(500).json({ error: `❌ ${error.toString()}` });
   }
 });
 
