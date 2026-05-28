@@ -10,6 +10,8 @@ const membershipSchema = new mongoose.Schema(
             unique: true,
             required: true,
             index: true,
+            lowercase: true, // Forces emails to lower-case to prevent login bypasses
+            trim: true
         },
         phone: {
             type: String,
@@ -17,6 +19,18 @@ const membershipSchema = new mongoose.Schema(
             required: true,
         },
         dob: { type: Date, required: true },
+
+        // --- Authentication & Access Control ---
+        password: { 
+            type: String, 
+            required: true,
+            select: false // Automatically hides password hashes from standard GET queries
+        },
+        role: {
+            type: String,
+            enum: ["user", "admin"],
+            default: "user"
+        },
 
         // --- Membership ---
         tier: {
@@ -38,6 +52,10 @@ const membershipSchema = new mongoose.Schema(
             },
             isolationBarrier: String,
         },
+
+        // --- Password Reset Tokens (Cryptographic Security Handshake) ---
+        resetPasswordToken: { type: String },
+        resetPasswordExpires: { type: Date },
 
         submittedAt: {
             type: Date,
