@@ -403,3 +403,39 @@ export const adminData = [
         preferences: { apparelSize: "L", golfSkillLevel: "Intermediate" }
     }
 ];
+
+export const partnershipData = [
+    {
+        companyName: "Luxe Spirits Co.",
+        contactPerson: "Diana Monroe",
+        email: "diana@luxespirits.com",
+        phone: "404-555-0201",
+        tierRequested: "Platinum",
+        eventsInterested: ["Golf Classic", "Summer Gala"],
+        hostingInterest: "Beverage Sponsor",
+        details: "Premium non-alcoholic spirits brand looking to sponsor tasting events.",
+        status: "active"
+    },
+    {
+        companyName: "Urban Wellness ATL",
+        contactPerson: "Marcus Green",
+        email: "m.green@urbanwellness.com",
+        phone: "678-555-0202",
+        tierRequested: "Gold",
+        eventsInterested: ["Wellness Retreat"],
+        hostingInterest: "Venue Partner",
+        details: "Wellness center offering retreat space and guided meditation sessions.",
+        status: "pending"
+    },
+    {
+        companyName: "TechBridge Solutions",
+        contactPerson: "Priya Sharma",
+        email: "priya@techbridge.io",
+        phone: "770-555-0203",
+        tierRequested: "Gold",
+        eventsInterested: ["Tech Mixer", "Golf Classic"],
+        hostingInterest: "Technology Sponsor",
+        details: "Providing event management tech and networking app integration.",
+        status: "accepted"
+    }
+];
