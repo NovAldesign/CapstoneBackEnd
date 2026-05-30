@@ -1,74 +1,62 @@
-const express = require('express');
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import { loginLimiter } from '../utilities/security.js';
+import Admin from '../models/adminSchema.js';
+import Membership from '../models/membershipSchema.js';
+import Partnership from '../models/partnershipSchema.js';
+
 const router = express.Router();
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
-const User = require('../Models/User'); // Adjust path to your User/Member model
 
-// 1. FORGOT PASSWORD: Generates token and gives you the link
-router.post('/forgot-password', async (req, res) => {
-  try {
-    const { email } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    
-    if (!user) {
-      return res.status(404).json({ error: "No account found with that email." });
+router.post("/login", loginLimiter, async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // 1. Search across all potential roles
+        let user = await Admin.findOne({ email });
+        let role = 'admin';
+
+        if (!user) {
+            user = await Membership.findOne({ email });
+            role = 'member';
+        }
+
+        if (!user) {
+            user = await Partnership.findOne({ email });
+            role = 'partner';
+        }
+
+        // 2. If no user found in any collection
+        if (!user) {
+            return res.status(401).json({ error: "No account found with this email." });
+        }
+
+        // 3. Verify Password
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ error: "Invalid password. Please try again." });
+        }
+
+        // 4. Issue JWT Token
+        const token = jwt.sign(
+            { id: user._id, role, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        // 5. Send back token + user info
+        res.json({
+            message: "Success",
+            token,
+            role,
+            id: user._id,
+            name: user.firstName || user.name || "Member",
+            tier: user.tier || null
+        });
+
+    } catch (err) {
+        console.error("Auth Error:", err);
+        res.status(500).json({ error: "Internal server error" });
     }
-
-    // Generate a secure random token string
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    
-    // Set token hash and expiration (1 hour from now) on the user document
-    user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).concat().digest('hex');
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour in milliseconds
-
-    await user.save();
-
-    // In production, you would email this link using nodemailer. 
-    // For development, we return it in the response so you can click it instantly!
-    const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
-
-    res.json({ 
-      message: "Reset token generated successfully.",
-      DEVELOPMENT_LINK: resetUrl // Copy-paste this link in your browser during testing
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
-// 2. RESET PASSWORD: Validates token and updates password
-router.post('/reset-password/:token', async (req, res) => {
-  try {
-    const { password } = req.body;
-    
-    // Hash the incoming token parameter to match against the stored DB hash
-    const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
-
-    // Find user with matching token and confirm it hasn't expired yet
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpires: { $gt: Date.now() }
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: "Password reset token is invalid or has expired." });
-    }
-
-    // Encrypt the new plaintext password using bcrypt
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
-
-    // Clear the reset tokens out of the database so they can't be reused
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-
-    await user.save();
-    res.json({ message: "✨ Password updated successfully! Proceed to login." });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+export default router;
