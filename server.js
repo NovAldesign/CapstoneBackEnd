@@ -76,20 +76,22 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // -------------------------------------------------------
-// 5. 🔥 FIX: ISOLATED RAW STRIPE WEBHOOK ROUTE MOUNTING
+// 5. 🔥 FIX: ISOLATED RAW WEBHOOK ROUTE MOUNTING (Stripe & Eventbrite)
 // -------------------------------------------------------
-// We intercept the webhook right here, using express.raw directly 
-// BEFORE any global express.json middleware can corrupt the buffer headers.
-app.use("/api/membership", (req, res, next) => {
-  if (req.path === "/webhook") {
+// Intercepting webhook requests here using express.json/raw directly
+// BEFORE global JSON parsing can alter or corrupt the payload streams.
+app.use((req, res, next) => {
+  if (req.path === "/api/membership/webhook") {
     express.raw({ type: "application/json" })(req, res, next);
+  } else if (req.path === "/api/events/webhook/eventbrite") {
+    express.json()(req, res, next);
   } else {
     next();
   }
 });
 
 // -------------------------------------------------------
-// 6. GLOBAL JSON PARSERS (Safe now that webhook is bypassed)
+// 6. GLOBAL JSON PARSERS (Safe now that webhooks are bypassed/handled)
 // -------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -98,7 +100,7 @@ app.use(express.urlencoded({ extended: true }));
 // 7. Dynamic API Routes
 // -------------------------------------------------------
 app.use("/api",              systemRoutes);
-app.use("/api/membership",   membershipRoutes); // Passes clean raw data to /webhook 
+app.use("/api/membership",   membershipRoutes); 
 app.use("/api/auth",         authRoutes);
 app.use("/api/events",       eventRoutes);      // Matches /api/events/external/:eventId seamlessly
 app.use("/api/partnerships", partnershipRoutes);
