@@ -22,7 +22,7 @@ import systemRoutes from "./routes/systemRoutes.js";
 import membershipRoutes from "./routes/membershipRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
-import eventRoutes from "./routes/eventRoutes.js";
+import eventRoutes from "./routes/eventRoutes.js"; // Handles our new /external/:eventId route automatically
 import partnershipRoutes from "./routes/partnershipRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import travelRoutes from "./routes/travelRoutes.js";
@@ -100,7 +100,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api",              systemRoutes);
 app.use("/api/membership",   membershipRoutes); // Passes clean raw data to /webhook 
 app.use("/api/auth",         authRoutes);
-app.use("/api/events",       eventRoutes);
+app.use("/api/events",       eventRoutes);      // Matches /api/events/external/:eventId seamlessly
 app.use("/api/partnerships", partnershipRoutes);
 app.use("/api/contact",      contactRoutes);
 app.use("/api/travel",       travelRoutes);
