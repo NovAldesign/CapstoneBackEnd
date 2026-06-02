@@ -420,15 +420,18 @@ router.get('/:id/orders', protect, restrictTo('admin'), async (req, res, next) =
 ------------------------------------------------------- */
 router.post('/webhook/eventbrite', async (req, res, next) => {
   try {
-    const { action, api_url } = req.body;
+    const { api_url } = req.body;
     const TOKEN = process.env.EVENTBRITE_PRIVATE_TOKEN;
+
+    // 🌟 EXTRACTION PATCH: Capture action whether root-level, nested inside config, or on a header tag flag
+    const action = req.body.action || req.body.config?.action || req.headers['x-eventbrite-event'];
 
     console.log(`📡 Eventbrite Webhook Triggered: Action -> ${action}`);
 
-    // Capture whenever an event is modified, created, launched, or tested
+    // Capture whenever an event is modified, created, launched, or manually tested
     if (action === 'event.updated' || action === 'event.published' || action === 'event.created' || action === 'test') {
       
-      // 🌟 FALLBACK: Handle Eventbrite manual mock test hook cleanly
+      // Handle Eventbrite manual mock test hook cleanly
       if (action === 'test' || !api_url || api_url.includes('{api-endpoint-to-fetch-object-details}')) {
         console.log("📝 Manual Test Hook detected. Seeding a live production baseline card...");
         
@@ -436,7 +439,7 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
           name: "GFC Elite Masterclass & Gathering",
           description: "Curated real-world strategy alignment spaces for elite operators. Join us to disconnect from professional isolation.",
           date: new Date(),
-          endDate: new Date(Date.now() + 4 * 60 * 60 * 1000), // 4 hours later
+          endDate: new Date(Date.now() + 4 * 60 * 60 * 1000), 
           location: { 
             name: "The Luxe Lounge", 
             address: "100 Buckhead Ave", 
@@ -445,7 +448,7 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
           },
           status: "published",
           capacity: 50,
-          eventbriteId: "15833661" // Explicitly tracking unique key matching your webhook dashboard instance
+          eventbriteId: "15833661"
         };
 
         const testDoc = await Event.findOneAndUpdate(
@@ -480,7 +483,7 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
         name: ebEvent.name?.text || 'Untitled Gathering',
         description: ebEvent.description?.html || 'No description provided.',
         date: new Date(ebEvent.start?.utc || Date.now()),
-        endDate: new Date(ebEvent.end?.utc || Date.now() + 3 * 60 * 60 * 1000), // Populates required schema value safely
+        endDate: new Date(ebEvent.end?.utc || Date.now() + 3 * 60 * 60 * 1000), 
         location: {
           name: ebEvent.venue?.name || 'Atlanta Curated Location',
           address: ebEvent.venue?.address?.address_1 || '',
@@ -496,13 +499,13 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
       const updatedDocument = await Event.findOneAndUpdate(
         { eventbriteId: ebEvent.id },
         { $set: syncPayload },
-        { new: true, upsert: true } // 🌟 FIXED: Implemented upsert true capability layout
+        { new: true, upsert: true }
       );
 
       console.log(`✅ Railway MongoDB Synchronized: "${updatedDocument.name}"`);
     }
 
-    // Always give Eventbrite a fast 200 OK receipt so it clears out its delivery queue
+    // Always give Eventbrite a fast 200 OK receipt
     return res.status(200).json({ received: true });
 
   } catch (err) {
