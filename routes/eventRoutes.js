@@ -418,4 +418,65 @@ router.get('/:id/orders', protect, restrictTo('admin'), async (req, res, next) =
   } catch (err) { next(err); }
 });
 
+/* -------------------------------------------------------
+   POST /api/events/webhook/eventbrite
+   Public — Automated Background Sync Listening for Eventbrite updates
+------------------------------------------------------- */
+router.post('/webhook/eventbrite', async (req, res, next) => {
+  try {
+    const { action, api_url } = req.body;
+    const TOKEN = process.env.EVENTBRITE_PRIVATE_TOKEN;
+
+    console.log(`📡 Eventbrite Webhook Triggered: Action -> ${action}`);
+
+    // Capture whenever an event is modified, created, or launched live
+    if (action === 'event.updated' || action === 'event.published' || action === 'event.created') {
+      if (!TOKEN) {
+        console.error("❌ Cannot sync with Eventbrite: EVENTBRITE_PRIVATE_TOKEN is missing in .env.");
+        return res.status(500).json({ error: 'Server authentication misconfigured.' });
+      }
+
+      // 1. Request the fresh absolute state package from Eventbrite
+      const ebResponse = await fetch(`${api_url}?expand=logo`, {
+        headers: { 'Authorization': `Bearer ${TOKEN}` }
+      });
+
+      if (!ebResponse.ok) {
+        console.error(`❌ Failed to fetch fresh webhook payload from Eventbrite endpoint: ${api_url}`);
+        return res.status(400).send('Failed to fetch resource state');
+      }
+
+      const ebEvent = await ebResponse.json();
+
+      // 2. Map Eventbrite's structure directly to your core schema
+      const syncPayload = {
+        name: ebEvent.name.text,
+        date: new Date(ebEvent.start.utc),
+        status: ebEvent.status === 'live' ? 'published' : 'draft',
+        ...(ebEvent.logo?.original?.url && { coverImage: ebEvent.logo.original.url })
+      };
+
+      // 3. Search and upsert based on the unique eventbriteId key field
+      const updatedDocument = await Event.findOneAndUpdate(
+        { eventbriteId: ebEvent.id },
+        { $set: syncPayload },
+        { new: true }
+      );
+
+      if (updatedDocument) {
+        console.log(`✅ Railway MongoDB auto-updated successfully for Event: "${updatedDocument.name}"`);
+      } else {
+        console.log(`⚠️ Webhook received data for Eventbrite ID ${ebEvent.id}, but no matching document exists in MongoDB with that eventbriteId.`);
+      }
+    }
+
+    // Always give Eventbrite a fast 200 OK receipt so it clears out its delivery queue
+    return res.status(200).json({ received: true });
+
+  } catch (err) {
+    console.error("❌ Error executing automated backend Eventbrite update pipeline:", err.message);
+    return res.status(200).json({ error: err.toString() });
+  }
+});
+
 export default router;
