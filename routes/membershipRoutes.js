@@ -1,7 +1,11 @@
 import express from 'express';
 import Stripe from 'stripe';
 import { Resend } from 'resend';
+import dotenv from 'dotenv';
 import Membership from '../models/membershipSchema.js';
+
+// 1. Core Config initialization — MUST run before instantiating Stripe/Resend constructors
+dotenv.config();
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
