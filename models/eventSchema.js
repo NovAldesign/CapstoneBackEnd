@@ -138,6 +138,12 @@ const EventSchema = new mongoose.Schema(
       type:    String,
       default: '',
     },
+    // 🌟 FIXED: Added unique, sparse eventbriteId tracking signature field element
+    eventbriteId: {
+      type:    String,
+      unique:  true,
+      sparse:  true 
+    },
   },
   {
     timestamps: true,
