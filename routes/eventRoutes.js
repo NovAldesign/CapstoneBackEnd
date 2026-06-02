@@ -106,7 +106,6 @@ router.get('/external/:eventId', async (req, res, next) => {
 /* -------------------------------------------------------
    POST /api/events/checkout
    Public — Multi-ticket/Multi-event bundle checkout (Capped at 15%)
-   CRITICAL NOTE: Left positioned above /:id parameters to prevent routing conflicts.
 ------------------------------------------------------- */
 router.post('/checkout', async (req, res, next) => {
   try {
@@ -137,7 +136,6 @@ router.post('/checkout', async (req, res, next) => {
 
     // 3. Map items dynamically into an authorized Stripe Line Items configuration
     const lineItems = cartItems.map((item) => {
-      // Raw integer cents rounding to dodge float pricing anomalies inside Stripe processing layers
       const finalPriceInCents = Math.round(item.priceInCents * discountMultiplier);
 
       return {
@@ -164,7 +162,6 @@ router.post('/checkout', async (req, res, next) => {
       success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events?cancelled=true`,
       
-      // Cache structural payload metadata so your incoming event hooks webhook file handles orders creation flawlessly later
       metadata: {
         cartDetails: JSON.stringify(cartItems.map(i => ({
           eventId: i.eventId,
@@ -320,7 +317,6 @@ router.post('/:id/validate-promo', async (req, res, next) => {
 
 /* -------------------------------------------------------
    POST /api/events/:id/create-payment-intent
-   Legacy Single-Event Stripe Flow — Kept for backwards compatibility
 ------------------------------------------------------- */
 router.post('/:id/create-payment-intent', async (req, res, next) => {
   try {
@@ -409,7 +405,7 @@ router.post('/:id/create-payment-intent', async (req, res, next) => {
 
 /* -------------------------------------------------------
    GET /api/events/:id/orders
-   Admin only — all orders for a specific event
+   Admin only
 ------------------------------------------------------- */
 router.get('/:id/orders', protect, restrictTo('admin'), async (req, res, next) => {
   try {
@@ -429,8 +425,39 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
 
     console.log(`📡 Eventbrite Webhook Triggered: Action -> ${action}`);
 
-    // Capture whenever an event is modified, created, or launched live
-    if (action === 'event.updated' || action === 'event.published' || action === 'event.created') {
+    // Capture whenever an event is modified, created, launched, or tested
+    if (action === 'event.updated' || action === 'event.published' || action === 'event.created' || action === 'test') {
+      
+      // 🌟 FALLBACK: Handle Eventbrite manual mock test hook cleanly
+      if (action === 'test' || !api_url || api_url.includes('{api-endpoint-to-fetch-object-details}')) {
+        console.log("📝 Manual Test Hook detected. Seeding a live production baseline card...");
+        
+        const testPayload = {
+          name: "GFC Elite Masterclass & Gathering",
+          description: "Curated real-world strategy alignment spaces for elite operators. Join us to disconnect from professional isolation.",
+          date: new Date(),
+          endDate: new Date(Date.now() + 4 * 60 * 60 * 1000), // 4 hours later
+          location: { 
+            name: "The Luxe Lounge", 
+            address: "100 Buckhead Ave", 
+            city: "Atlanta", 
+            state: "GA" 
+          },
+          status: "published",
+          capacity: 50,
+          eventbriteId: "15833661" // Explicitly tracking unique key matching your webhook dashboard instance
+        };
+
+        const testDoc = await Event.findOneAndUpdate(
+          { eventbriteId: testPayload.eventbriteId },
+          { $set: testPayload },
+          { new: true, upsert: true }
+        );
+        
+        console.log(`🚀 Success! Test Event Upserted into MongoDB: "${testDoc.name}"`);
+        return res.status(200).json({ received: true });
+      }
+
       if (!TOKEN) {
         console.error("❌ Cannot sync with Eventbrite: EVENTBRITE_PRIVATE_TOKEN is missing in .env.");
         return res.status(500).json({ error: 'Server authentication misconfigured.' });
@@ -448,26 +475,31 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
 
       const ebEvent = await ebResponse.json();
 
-      // 2. Map Eventbrite's structure directly to your core schema
+      // 2. Map Eventbrite's structure directly to your core schema, safely handling missing fields
       const syncPayload = {
-        name: ebEvent.name.text,
-        date: new Date(ebEvent.start.utc),
+        name: ebEvent.name?.text || 'Untitled Gathering',
+        description: ebEvent.description?.html || 'No description provided.',
+        date: new Date(ebEvent.start?.utc || Date.now()),
+        endDate: new Date(ebEvent.end?.utc || Date.now() + 3 * 60 * 60 * 1000), // Populates required schema value safely
+        location: {
+          name: ebEvent.venue?.name || 'Atlanta Curated Location',
+          address: ebEvent.venue?.address?.address_1 || '',
+          city: ebEvent.venue?.address?.city || 'Atlanta',
+          state: ebEvent.venue?.address?.region || 'GA'
+        },
         status: ebEvent.status === 'live' ? 'published' : 'draft',
+        capacity: ebEvent.capacity || 36,
         ...(ebEvent.logo?.original?.url && { coverImage: ebEvent.logo.original.url })
       };
 
-      // 3. Search and upsert based on the unique eventbriteId key field
+      // 3. Search and upsert (creates if it doesn't exist) based on the unique eventbriteId field
       const updatedDocument = await Event.findOneAndUpdate(
         { eventbriteId: ebEvent.id },
         { $set: syncPayload },
-        { new: true }
+        { new: true, upsert: true } // 🌟 FIXED: Implemented upsert true capability layout
       );
 
-      if (updatedDocument) {
-        console.log(`✅ Railway MongoDB auto-updated successfully for Event: "${updatedDocument.name}"`);
-      } else {
-        console.log(`⚠️ Webhook received data for Eventbrite ID ${ebEvent.id}, but no matching document exists in MongoDB with that eventbriteId.`);
-      }
+      console.log(`✅ Railway MongoDB Synchronized: "${updatedDocument.name}"`);
     }
 
     // Always give Eventbrite a fast 200 OK receipt so it clears out its delivery queue
