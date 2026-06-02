@@ -67,6 +67,43 @@ router.get('/', async (req, res, next) => {
 });
 
 /* -------------------------------------------------------
+   GET /api/events/external/:eventId
+   Public — Fetch dynamic event copy/imagery from Eventbrite
+------------------------------------------------------- */
+router.get('/external/:eventId', async (req, res, next) => {
+  try {
+    const { eventId } = req.params;
+    const TOKEN = process.env.EVENTBRITE_PRIVATE_TOKEN;
+
+    if (!TOKEN) {
+      return res.status(500).json({ error: 'Eventbrite API token is missing on the server.' });
+    }
+
+    // Server-to-server call fetching description and original cover image dimensions
+    const response = await fetch(`https://www.eventbriteapi.com/v3/events/${eventId}/?expand=logo`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    });
+    
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to retrieve event details from Eventbrite' });
+    }
+
+    const eventData = await response.json();
+
+    // Pass clean asset URLs and text formatting back to the layout UI
+    res.json({
+      title: eventData.name.text,
+      description: eventData.description.html, 
+      image: eventData.logo?.original?.url || '', 
+      start: eventData.start.local
+    });
+
+  } catch (err) { 
+    next(err); 
+  }
+});
+
+/* -------------------------------------------------------
    POST /api/events/checkout
    Public — Multi-ticket/Multi-event bundle checkout (Capped at 15%)
    CRITICAL NOTE: Left positioned above /:id parameters to prevent routing conflicts.
