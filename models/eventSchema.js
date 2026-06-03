@@ -17,6 +17,15 @@ const FAQSchema = new mongoose.Schema({
 });
 
 /* -------------------------------------------------------
+   Agenda Item Sub-Schema
+------------------------------------------------------- */
+const AgendaItemSchema = new mongoose.Schema({
+  time:        { type: String, required: true },
+  title:       { type: String, default: '' },
+  description: { type: String, default: '' }
+});
+
+/* -------------------------------------------------------
    Ticket Type Sub-Schema
 ------------------------------------------------------- */
 const TicketTypeSchema = new mongoose.Schema({
@@ -116,6 +125,7 @@ const EventSchema = new mongoose.Schema(
       address: { type: String, default: '' },
       city:    { type: String, default: 'Atlanta' },
       state:   { type: String, default: 'GA' },
+      zip:     { type: String, default: '' },
     },
     coverImage: {
       type:    String,
@@ -123,9 +133,12 @@ const EventSchema = new mongoose.Schema(
     },
     ticketTypes: [TicketTypeSchema],
     promoCodes:  [PromocodeSchema],
-    
+
     // 🌟 EXTRA GATHERING DETAILS CAPTURE FIELDS
-    faqs: [FAQSchema],
+    faqs:       [FAQSchema],
+    agenda:     [AgendaItemSchema],
+    highlights: [{ type: String }],
+
     refundPolicy: {
       type:    String,
       default: "All Sales Final. Due to curated arrangements, advance catering, and venue partnership commitments, individual tickets are non-refundable. Pass entries can be transferred to another qualified individual up to 24 hours prior to the experience."
@@ -163,9 +176,9 @@ const EventSchema = new mongoose.Schema(
       default: '',
     },
     eventbriteId: {
-      type:    String,
-      unique:  true,
-      sparse:  true 
+      type:   String,
+      unique: true,
+      sparse: true
     },
   },
   {
