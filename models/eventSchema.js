@@ -1,6 +1,22 @@
 import mongoose from 'mongoose';
 
 /* -------------------------------------------------------
+   FAQ Sub-Schema
+------------------------------------------------------- */
+const FAQSchema = new mongoose.Schema({
+  question: {
+    type:     String,
+    required: true,
+    trim:     true
+  },
+  answer: {
+    type:     String,
+    required: true,
+    trim:     true
+  }
+});
+
+/* -------------------------------------------------------
    Ticket Type Sub-Schema
 ------------------------------------------------------- */
 const TicketTypeSchema = new mongoose.Schema({
@@ -107,6 +123,14 @@ const EventSchema = new mongoose.Schema(
     },
     ticketTypes: [TicketTypeSchema],
     promoCodes:  [PromocodeSchema],
+    
+    // 🌟 EXTRA GATHERING DETAILS CAPTURE FIELDS
+    faqs: [FAQSchema],
+    refundPolicy: {
+      type:    String,
+      default: "All Sales Final. Due to curated arrangements, advance catering, and venue partnership commitments, individual tickets are non-refundable. Pass entries can be transferred to another qualified individual up to 24 hours prior to the experience."
+    },
+
     capacity: {
       type:     Number,
       required: true,
@@ -138,7 +162,6 @@ const EventSchema = new mongoose.Schema(
       type:    String,
       default: '',
     },
-    // 🌟 FIXED: Added unique, sparse eventbriteId tracking signature field element
     eventbriteId: {
       type:    String,
       unique:  true,
