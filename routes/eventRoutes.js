@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import Stripe from 'stripe';
-import Event from '../models/eventSchema.js';
+import Event from '../models/eventSchema.js'; // Ensure your schema is named correctly here
 import Order from '../models/orderSchema.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
@@ -41,7 +41,7 @@ const upload = multer({
 // -------------------------------------------------------
 const parseFormFields = (body) => {
   const parsed = { ...body };
-  const jsonFields = ['location', 'ticketTypes', 'promoCodes'];
+  const jsonFields = ['location', 'ticketTypes', 'promoCodes', 'faqs'];
   for (const field of jsonFields) {
     if (parsed[field] && typeof parsed[field] === 'string') {
       try { parsed[field] = JSON.parse(parsed[field]); }
@@ -79,8 +79,8 @@ router.get('/external/:eventId', async (req, res, next) => {
       return res.status(500).json({ error: 'Eventbrite API token is missing on the server.' });
     }
 
-    // Server-to-server call fetching description and original cover image dimensions
-    const response = await fetch(`https://www.eventbriteapi.com/v3/events/${eventId}/?expand=logo`, {
+    // Server-to-server call fetching details expand parameters
+    const response = await fetch(`https://www.eventbriteapi.com/v3/events/${eventId}/?expand=logo,ticket_classes`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     });
     
@@ -90,12 +90,21 @@ router.get('/external/:eventId', async (req, res, next) => {
 
     const eventData = await response.json();
 
-    // Pass clean asset URLs and text formatting back to the layout UI
+    // Parse out dynamic ticket tiers live if requested by layout cards
+    const ticketTiers = (eventData.ticket_classes || []).map(tc => ({
+      name: tc.name,
+      price: tc.cost ? (tc.cost.value / 100) : 0,
+      priceInCents: tc.cost ? tc.cost.value : 0,
+      quantity: tc.quantity_total || 36,
+      sold: tc.quantity_sold || 0
+    }));
+
     res.json({
       title: eventData.name.text,
       description: eventData.description.html, 
       image: eventData.logo?.original?.url || '', 
-      start: eventData.start.local
+      start: eventData.start.local,
+      ticketTiers
     });
 
   } catch (err) { 
@@ -119,22 +128,19 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(400).json({ error: 'Your cart is completely empty.' });
     }
 
-    // 1. Calculate how many UNIQUE events are chosen to measure bundle discount tiers
     const uniqueEventIds = [...new Set(cartItems.map(item => item.eventId))];
 
-    // 2. Set multi-event bundle discount scales (Capped strictly at 15% max ceiling)
     let discountMultiplier = 1.0;
     let discountLabel = '';
 
     if (uniqueEventIds.length === 2) {
-      discountMultiplier = 0.90; // 10% off total bundle ticket line item rates
+      discountMultiplier = 0.90; 
       discountLabel = ' (10% Multi-Event Bundle Discount Applied)';
     } else if (uniqueEventIds.length >= 3) {
-      discountMultiplier = 0.85; // 15% off capped max rate for 3+ distinct events
+      discountMultiplier = 0.85; 
       discountLabel = ' (15% Max Multi-Event Bundle Discount Applied)';
     }
 
-    // 3. Map items dynamically into an authorized Stripe Line Items configuration
     const lineItems = cartItems.map((item) => {
       const finalPriceInCents = Math.round(item.priceInCents * discountMultiplier);
 
@@ -153,7 +159,6 @@ router.post('/checkout', async (req, res, next) => {
       };
     });
 
-    // 4. Generate the verified safe Stripe Checkout Session window
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -274,7 +279,6 @@ router.delete('/:id', protect, restrictTo('admin'), async (req, res, next) => {
 
 /* -------------------------------------------------------
    POST /api/events/:id/validate-promo
-   Public — validate a promo code
 ------------------------------------------------------- */
 router.post('/:id/validate-promo', async (req, res, next) => {
   try {
@@ -288,12 +292,9 @@ router.post('/:id/validate-promo', async (req, res, next) => {
       (p) => p.code === code.toUpperCase().trim() && p.active
     );
 
-    if (!promo)
-      return res.status(404).json({ error: 'Invalid or expired promo code.' });
-    if (promo.expiresAt && new Date(promo.expiresAt) < new Date())
-      return res.status(400).json({ error: 'This promo code has expired.' });
-    if (promo.maxUses !== null && promo.uses >= promo.maxUses)
-      return res.status(400).json({ error: 'This promo code has reached its usage limit.' });
+    if (!promo) return res.status(404).json({ error: 'Invalid or expired promo code.' });
+    if (promo.expiresAt && new Date(promo.expiresAt) < new Date()) return res.status(400).json({ error: 'This promo code has expired.' });
+    if (promo.maxUses !== null && promo.uses >= promo.maxUses) return res.status(400).json({ error: 'This promo code has reached its limit.' });
 
     const ticketType = event.ticketTypes.id(ticketTypeId);
     if (!ticketType) return res.status(404).json({ error: 'Ticket type not found.' });
@@ -320,13 +321,10 @@ router.post('/:id/validate-promo', async (req, res, next) => {
 ------------------------------------------------------- */
 router.post('/:id/create-payment-intent', async (req, res, next) => {
   try {
-    if (!stripe)
-      return res.status(500).json({ error: 'Stripe is not configured on the server.' });
+    if (!stripe) return res.status(500).json({ error: 'Stripe is not configured on the server.' });
 
     const { ticketTypeId, quantity = 1, buyerName, buyerEmail, promoCode } = req.body;
-
-    if (!buyerName || !buyerEmail)
-      return res.status(400).json({ error: 'Buyer name and email are required.' });
+    if (!buyerName || !buyerEmail) return res.status(400).json({ error: 'Buyer name and email are required.' });
 
     const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ error: 'Event not found.' });
@@ -335,44 +333,28 @@ router.post('/:id/create-payment-intent', async (req, res, next) => {
     if (!ticketType) return res.status(404).json({ error: 'Ticket type not found.' });
 
     const remaining = ticketType.quantity - ticketType.sold;
-    if (remaining < quantity)
-      return res.status(400).json({ error: `Only ${remaining} ticket${remaining === 1 ? '' : 's'} left.` });
+    if (remaining < quantity) return res.status(400).json({ error: `Only ${remaining} tickets left.` });
 
     const subtotal = ticketType.price * quantity;
     let discount  = 0;
     let promoUsed = null;
 
     if (promoCode) {
-      const promo = event.promoCodes.find(
-        (p) => p.code === promoCode.toUpperCase().trim() && p.active
-      );
+      const promo = event.promoCodes.find((p) => p.code === promoCode.toUpperCase().trim() && p.active);
       if (promo) {
-        discount  = promo.discountType === 'percent'
-          ? Math.round(subtotal * (promo.discountValue / 100))
-          : Math.min(promo.discountValue, subtotal);
+        discount  = promo.discountType === 'percent' ? Math.round(subtotal * (promo.discountValue / 100)) : Math.min(promo.discountValue, subtotal);
         promoUsed = promo.code;
       }
     }
 
     const total = subtotal - discount;
-
-    if (total === 0) {
-      return res.status(400).json({
-        error: 'Total is $0 — use the free checkout flow instead of Stripe.',
-      });
-    }
+    if (total === 0) return res.status(400).json({ error: 'Total is $0.' });
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount:   total,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
-      metadata: {
-        eventId:    event._id.toString(),
-        eventName:  event.name,
-        ticketType: ticketType.name,
-        buyerEmail,
-        promoCode:  promoUsed || '',
-      },
+      metadata: { eventId: event._id.toString(), eventName: event.name, ticketType: ticketType.name, buyerEmail, promoCode:  promoUsed || '' },
     });
 
     const order = new Order({
@@ -393,19 +375,12 @@ router.post('/:id/create-payment-intent', async (req, res, next) => {
 
     await order.save();
 
-    res.json({
-      clientSecret: paymentIntent.client_secret,
-      orderId:      order._id,
-      total,
-      subtotal,
-      discount,
-    });
+    res.json({ clientSecret: paymentIntent.client_secret, orderId: order._id, total, subtotal, discount });
   } catch (err) { next(err); }
 });
 
 /* -------------------------------------------------------
    GET /api/events/:id/orders
-   Admin only
 ------------------------------------------------------- */
 router.get('/:id/orders', protect, restrictTo('admin'), async (req, res, next) => {
   try {
@@ -422,33 +397,32 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
   try {
     const { api_url } = req.body;
     const TOKEN = process.env.EVENTBRITE_PRIVATE_TOKEN;
-
-    // 🌟 EXTRACTION PATCH: Capture action whether root-level, nested inside config, or on a header tag flag
     const action = req.body.action || req.body.config?.action || req.headers['x-eventbrite-event'];
 
     console.log(`📡 Eventbrite Webhook Triggered: Action -> ${action}`);
 
-    // Capture whenever an event is modified, created, launched, or manually tested
     if (action === 'event.updated' || action === 'event.published' || action === 'event.created' || action === 'test') {
       
       // Handle Eventbrite manual mock test hook cleanly
       if (action === 'test' || !api_url || api_url.includes('{api-endpoint-to-fetch-object-details}')) {
-        console.log("📝 Manual Test Hook detected. Seeding a live production baseline card...");
+        console.log("📝 Manual Test Hook detected. Seeding structural mock ticket options...");
         
         const testPayload = {
           name: "GFC Elite Masterclass & Gathering",
           description: "Curated real-world strategy alignment spaces for elite operators. Join us to disconnect from professional isolation.",
           date: new Date(),
           endDate: new Date(Date.now() + 4 * 60 * 60 * 1000), 
-          location: { 
-            name: "The Luxe Lounge", 
-            address: "100 Buckhead Ave", 
-            city: "Atlanta", 
-            state: "GA" 
-          },
+          location: { name: "The Luxe Lounge", address: "100 Buckhead Ave", city: "Atlanta", state: "GA" },
           status: "published",
           capacity: 50,
-          eventbriteId: "15833661"
+          eventbriteId: "15833661",
+          ticketTypes: [
+            { name: "Early Bird Entry Pass", price: 30, quantity: 20, sold: 0 },
+            { name: "General Admission Pass", price: 35, quantity: 30, sold: 0 }
+          ],
+          faqs: [
+            { question: "Are mocktails provided?", answer: "Yes, a premium selection of artisanal curated mocktails is fully included with every pass tier entry." }
+          ]
         };
 
         const testDoc = await Event.findOneAndUpdate(
@@ -457,7 +431,6 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
           { new: true, upsert: true }
         );
         
-        console.log(`🚀 Success! Test Event Upserted into MongoDB: "${testDoc.name}"`);
         return res.status(200).json({ received: true });
       }
 
@@ -466,8 +439,8 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
         return res.status(500).json({ error: 'Server authentication misconfigured.' });
       }
 
-      // 1. Request the fresh absolute state package from Eventbrite
-      const ebResponse = await fetch(`${api_url}?expand=logo`, {
+      // 1. 🌟 ENHANCED EXPANSION FETCH: Force Eventbrite to pass ticket classes right inside the webhook load pipeline
+      const ebResponse = await fetch(`${api_url}?expand=logo,ticket_classes`, {
         headers: { 'Authorization': `Bearer ${TOKEN}` }
       });
 
@@ -478,7 +451,21 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
 
       const ebEvent = await ebResponse.json();
 
-      // 2. Map Eventbrite's structure directly to your core schema, safely handling missing fields
+      // 2. 🌟 TRANSLATE TICKETS: Loop through and structure the Eventbrite ticket classes into your explicit schema
+      const formattedTicketTypes = (ebEvent.ticket_classes || []).map((ticketClass) => {
+        // Eventbrite costs are integers (e.g. 3500 cents). Divide by 100 for your schema's standard Number format.
+        const numericPrice = ticketClass.cost ? (ticketClass.cost.value / 100) : 0;
+        
+        return {
+          name: ticketClass.name || 'General Admission Pass',
+          price: numericPrice,
+          quantity: ticketClass.quantity_total || 36,
+          sold: ticketClass.quantity_sold || 0,
+          description: ticketClass.description || ''
+        };
+      });
+
+      // 3. Map Eventbrite's payload structure into your updated MongoDB core properties
       const syncPayload = {
         name: ebEvent.name?.text || 'Untitled Gathering',
         description: ebEvent.description?.html || 'No description provided.',
@@ -492,20 +479,24 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
         },
         status: ebEvent.status === 'live' ? 'published' : 'draft',
         capacity: ebEvent.capacity || 36,
+        ticketTypes: formattedTicketTypes, // 🌟 Pushed clean arrays straight into your collection
+        faqs: [
+          { question: "What is the policy regarding dynamic refunds?", answer: "All sales are final. Individual tickets are completely non-refundable due to curated venue, structural catering, and operational arrangements." },
+          { question: "Can I transfer my entry reservation pass?", answer: "Yes. Entry reservation passes can be fully assigned over to another verified individual up to 24 hours prior to the session start timeline." }
+        ],
         ...(ebEvent.logo?.original?.url && { coverImage: ebEvent.logo.original.url })
       };
 
-      // 3. Search and upsert (creates if it doesn't exist) based on the unique eventbriteId field
+      // 4. Upsert entry cleanly matching database unique sign tags
       const updatedDocument = await Event.findOneAndUpdate(
         { eventbriteId: ebEvent.id },
         { $set: syncPayload },
         { new: true, upsert: true }
       );
 
-      console.log(`✅ Railway MongoDB Synchronized: "${updatedDocument.name}"`);
+      console.log(`✅ Railway Database Synchronized: "${updatedDocument.name}" with (${updatedDocument.ticketTypes.length}) active price tiers.`);
     }
 
-    // Always give Eventbrite a fast 200 OK receipt
     return res.status(200).json({ received: true });
 
   } catch (err) {
