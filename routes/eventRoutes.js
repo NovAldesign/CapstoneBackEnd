@@ -735,6 +735,8 @@ router.get('/', async (req, res, next) => {
 /* -------------------------------------------------------
    GET /api/events/external/:eventId
    Public — Fetch full dynamic event data from Eventbrite
+   Returns: title, description, image, start, end, location,
+            agenda, highlights, ticketTiers
 ------------------------------------------------------- */
 router.get('/external/:eventId', async (req, res, next) => {
   try {
@@ -751,11 +753,12 @@ router.get('/external/:eventId', async (req, res, next) => {
       return res.status(404).json({ error: 'Failed to retrieve event details from Eventbrite.' });
     }
 
+    // Ticket tiers
     const ticketTiers = (eventData.ticket_classes || []).map(tc => ({
       name:         tc.name,
       price:        tc.cost ? (tc.cost.value / 100) : 0,
       priceInCents: tc.cost ? tc.cost.value : 0,
-      quantity:     tc.quantity_total || 40,
+      quantity:     tc.quantity_total || 36,
       sold:         tc.quantity_sold || 0
     }));
 
@@ -771,7 +774,9 @@ router.get('/external/:eventId', async (req, res, next) => {
       ticketTiers
     });
 
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 /* -------------------------------------------------------
@@ -829,11 +834,11 @@ router.post('/checkout', async (req, res, next) => {
       cancel_url:  `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events?cancelled=true`,
       metadata: {
         cartDetails: JSON.stringify(cartItems.map(i => ({
-          eventId:    i.eventId,
+          eventId:      i.eventId,
           ticketTypeId: i.ticketTypeId,
-          ticketName: i.ticketTypeName,
-          qty:        i.quantity,
-          pricePaid:  Math.round(i.priceInCents * discountMultiplier)
+          ticketName:   i.ticketTypeName,
+          qty:          i.quantity,
+          pricePaid:    Math.round(i.priceInCents * discountMultiplier)
         }))),
         isBundleCheckout: (discountMultiplier < 1.0).toString()
       }
@@ -881,7 +886,7 @@ router.get('/admin/all', protect, restrictTo('admin'), async (req, res, next) =>
 
 /* -------------------------------------------------------
    GET /api/events/:id
-   Public — single event
+   Public — single event (no promo codes exposed)
 ------------------------------------------------------- */
 router.get('/:id', async (req, res, next) => {
   try {
@@ -1056,6 +1061,63 @@ router.get('/:id/orders', protect, restrictTo('admin'), async (req, res, next) =
 });
 
 /* -------------------------------------------------------
+   POST /api/events/webhook/stripe
+   Public — Listens for completed checkouts to sync ticket counts
+------------------------------------------------------- */
+router.post('/webhook/stripe', async (req, res, next) => {
+  const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_EVENTS_WEBHOOK_SECRET;
+
+  let stripeEvent;
+
+  try {
+    if (!stripe) {
+      return res.status(500).json({ error: 'Stripe integration is not initialized on the server.' });
+    }
+    stripeEvent = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+  } catch (err) {
+    console.error(`❌ Stripe Webhook Verification Failure: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (stripeEvent.type === 'checkout.session.completed') {
+    const session = stripeEvent.data.object;
+
+    try {
+      if (session.metadata && session.metadata.cartDetails) {
+        const purchasedCart = JSON.parse(session.metadata.cartDetails);
+
+        console.log(`📡 Stripe Webhook Processed: Syncing ${purchasedCart.length} inventory lines...`);
+
+        for (const item of purchasedCart) {
+          const updatedEvent = await Event.findOneAndUpdate(
+            { 
+              _id: item.eventId, 
+              "ticketTypes._id": item.ticketTypeId 
+            },
+            { 
+              $inc: { "ticketTypes.$.sold": Number(item.qty) } 
+            },
+            { new: true }
+          );
+
+          if (updatedEvent) {
+            console.log(`📈 Synchronized Ticket: Increased "${item.ticketName}" count by +${item.qty}.`);
+          } else {
+            console.warn(`⚠️ Inventory Mismatch: Unable to credit ticket category ID: ${item.ticketTypeId}`);
+          }
+        }
+      }
+    } catch (processErr) {
+      console.error(`❌ Critical layout failure parsing item metrics:`, processErr);
+      return res.status(500).json({ error: 'Internal transactional matrix fault.' });
+    }
+  }
+
+  res.status(200).json({ received: true });
+});
+
+/* -------------------------------------------------------
    POST /api/events/webhook/eventbrite
    Public — Automated Background Sync Listening for Eventbrite updates
 ------------------------------------------------------- */
@@ -1067,52 +1129,9 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
 
     console.log(`📡 Eventbrite Webhook Triggered: Action -> ${action}`);
 
-    // --- INTERCEPT ACTION: TICKET SALES / ORDER COMPLETED ---
-    if (action === 'order.placed') {
-      if (!api_url) return res.status(400).json({ error: 'Missing api_url for checking details.' });
-      if (!TOKEN) return res.status(500).json({ error: 'Server authentication misconfigured.' });
-
-      // Fetch the full order payload from Eventbrite to see what was purchased
-      const orderDetailsRes = await fetch(`${api_url}?expand=event,attendees`, {
-        headers: { 'Authorization': `Bearer ${TOKEN}` }
-      });
-
-      if (!orderDetailsRes.ok) {
-        console.error('❌ Failed to fetch order verification payload from Eventbrite.');
-        return res.status(400).send('Verification mismatch');
-      }
-
-      const orderData = await orderDetailsRes.json();
-      const eventbriteEventId = orderData.event_id;
-      
-      // The total number of tickets in this customer order transaction
-      const totalTicketsBought = orderData.attendees ? orderData.attendees.length : 1;
-
-      console.log(`🎟️ Order Processed! Eventbrite ID: ${eventbriteEventId}. Tickets Count: ${totalTicketsBought}`);
-
-      // Locate your local event document and increment the ticket tracking pools
-      const targetedEvent = await Event.findOne({ eventbriteId: eventbriteEventId });
-      if (!targetedEvent) {
-        console.warn(`⚠️ Webhook arrived for an event not yet logged in your MongoDB (${eventbriteEventId}).`);
-        return res.status(200).json({ received: true, note: 'Event missing locally' });
-      }
-
-      // Loop through attendees to verify sub-tier classes if tracking granular tickets
-      // For global event thresholds, we can dynamically increment your core schema counter:
-      const totalUpdatedSold = (targetedEvent.ticketsSold || 0) + totalTicketsBought;
-
-      await Event.findOneAndUpdate(
-        { eventbriteId: eventbriteEventId },
-        { $set: { ticketsSold: totalUpdatedSold } }
-      );
-
-      console.log(`📈 Synchronized Ticket Counts: ${targetedEvent.name} is now at ${totalUpdatedSold}/40 seats allocated.`);
-      return res.status(200).json({ received: true, action: 'order.placed' });
-    }
-
-    // --- EXISTING ACTIONS: METADATA & STRUCTURE SYNCS ---
     if (action === 'event.updated' || action === 'event.published' || action === 'event.created' || action === 'test') {
 
+      // Handle Eventbrite manual mock test hook cleanly
       if (action === 'test' || !api_url || api_url.includes('{api-endpoint-to-fetch-object-details}')) {
         console.log("📝 Manual Test Hook detected. Seeding structural mock ticket options...");
 
@@ -1129,12 +1148,11 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
             zip:     ""
           },
           status:   "published",
-          capacity: 40,
-          ticketsSold: 0, // Initalize base tracker
+          capacity: 50,
           eventbriteId: "15833661",
           ticketTypes: [
             { name: "Early Bird Entry Pass",   price: 30, quantity: 20, sold: 0 },
-            { name: "General Admission Pass",  price: 35, quantity: 20, sold: 0 }
+            { name: "General Admission Pass",  price: 35, quantity: 30, sold: 0 }
           ],
           agenda: [
             { time: "6:00 PM", title: "Doors Open",        description: "Arrive, settle in, and connect with fellow attendees." },
@@ -1162,6 +1180,7 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
         return res.status(500).json({ error: 'Server authentication misconfigured.' });
       }
 
+      // Extract the event ID from the api_url so we can call our shared helper
       const eventIdMatch = api_url.match(/events\/(\d+)/);
       if (!eventIdMatch) {
         console.error("❌ Could not extract event ID from api_url:", api_url);
@@ -1169,6 +1188,7 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
       }
       const eventId = eventIdMatch[1];
 
+      // Fetch full event data + structured content in parallel
       const { eventData: ebEvent, structuredData } = await fetchEventbriteFullData(eventId, TOKEN);
 
       if (!ebEvent) {
@@ -1176,17 +1196,16 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
         return res.status(400).send('Failed to fetch resource state');
       }
 
+      // Translate ticket classes into schema format
       const formattedTicketTypes = (ebEvent.ticket_classes || []).map((tc) => ({
         name:        tc.name || 'General Admission Pass',
         price:       tc.cost ? (tc.cost.value / 100) : 0,
-        quantity:    tc.quantity_total || 40,
+        quantity:    tc.quantity_total || 36,
         sold:        tc.quantity_sold || 0,
         description: tc.description || ''
       }));
 
-      // Pull current live ticket sold aggregates directly from Eventbrite metadata matrix 
-      const aggregateTicketsSold = (ebEvent.ticket_classes || []).reduce((sum, current) => sum + (current.quantity_sold || 0), 0);
-
+      // Build the full sync payload
       const syncPayload = {
         name:        ebEvent.name?.text || 'Untitled Gathering',
         description: ebEvent.description?.html || 'No description provided.',
@@ -1200,8 +1219,7 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
           zip:     ebEvent.venue?.address?.postal_code  || ''
         },
         status:       ebEvent.status === 'live' ? 'published' : 'draft',
-        capacity:     ebEvent.capacity || 40,
-        ticketsSold:  aggregateTicketsSold, // Synchronize running counter 
+        capacity:     ebEvent.capacity || 36,
         ticketTypes:  formattedTicketTypes,
         agenda:       parseAgenda(structuredData),
         highlights:   parseHighlights(ebEvent),
@@ -1224,7 +1242,7 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
         { new: true, upsert: true }
       );
 
-      console.log(`✅ Database Synchronized: "${updatedDocument.name}" is now updated internally.`);
+      console.log(`Base Schema Synchronized: "${updatedDocument.name}" is now updated internally.`);
     }
 
     return res.status(200).json({ received: true });

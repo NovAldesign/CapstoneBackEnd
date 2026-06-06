@@ -81,7 +81,8 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 // Intercepting webhook requests here using express.json/raw directly
 // BEFORE global JSON parsing can alter or corrupt the payload streams.
 app.use((req, res, next) => {
-  if (req.path === "/api/membership/webhook") {
+  // Added a check for /api/events/webhook/stripe to preserve the raw body needed for verifying signatures
+  if (req.path === "/api/membership/webhook" || req.path === "/api/events/webhook/stripe") {
     express.raw({ type: "application/json" })(req, res, next);
   } else if (req.path === "/api/events/webhook/eventbrite") {
     express.json()(req, res, next);
