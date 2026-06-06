@@ -595,9 +595,6 @@
 //     return res.status(200).json({ error: err.toString() });
 //   }
 // });
-
-// export default router;
-
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -666,7 +663,7 @@ const fetchEventbriteFullData = async (eventId, TOKEN) => {
     })
   ]);
 
-  const eventData = eventRes.ok ? await eventRes.json() : null;
+  const eventData      = eventRes.ok      ? await eventRes.json()      : null;
   const structuredData = structuredRes.ok ? await structuredRes.json() : null;
 
   return { eventData, structuredData };
@@ -697,10 +694,10 @@ const parseAgenda = (structuredData) => {
 // -------------------------------------------------------
 const parseHighlights = (eventData) => {
   const highlights = [];
-  if (eventData.format?.name)   highlights.push(eventData.format.name);
-  if (eventData.is_free)        highlights.push('Free Admission');
-  if (!eventData.online_event)  highlights.push('In Person');
-  if (eventData.capacity)       highlights.push(`Limited to ${eventData.capacity} guests`);
+  if (eventData.format?.name)  highlights.push(eventData.format.name);
+  if (eventData.is_free)       highlights.push('Free Admission');
+  if (!eventData.online_event) highlights.push('In Person');
+  if (eventData.capacity)      highlights.push(`Limited to ${eventData.capacity} guests`);
   return highlights;
 };
 
@@ -734,9 +731,9 @@ router.get('/', async (req, res, next) => {
 
 /* -------------------------------------------------------
    GET /api/events/external/:eventId
-   Public — Fetch full dynamic event data from Eventbrite
-   Returns: title, description, image, start, end, location,
-            agenda, highlights, ticketTiers
+   Public — merges Eventbrite API data with DB enrichment.
+   DB always wins for FAQs, highlights, and agenda since
+   the Eventbrite REST API does not expose these fields.
 ------------------------------------------------------- */
 router.get('/external/:eventId', async (req, res, next) => {
   try {
@@ -747,30 +744,61 @@ router.get('/external/:eventId', async (req, res, next) => {
       return res.status(500).json({ error: 'Eventbrite API token is missing on the server.' });
     }
 
-    const { eventData, structuredData } = await fetchEventbriteFullData(eventId, TOKEN);
+    // Run DB lookup and Eventbrite fetch in parallel
+    const [dbEvent, { eventData, structuredData }] = await Promise.all([
+      Event.findOne({ eventbriteId: eventId }).select('-promoCodes'),
+      fetchEventbriteFullData(eventId, TOKEN)
+    ]);
 
     if (!eventData) {
       return res.status(404).json({ error: 'Failed to retrieve event details from Eventbrite.' });
     }
 
-    // Ticket tiers
-    const ticketTiers = (eventData.ticket_classes || []).map(tc => ({
-      name:         tc.name,
-      price:        tc.cost ? (tc.cost.value / 100) : 0,
-      priceInCents: tc.cost ? tc.cost.value : 0,
-      quantity:     tc.quantity_total || 36,
-      sold:         tc.quantity_sold || 0
-    }));
+    // Ticket tiers — prefer DB (has live sold counts), fall back to Eventbrite
+    const ticketTiers = dbEvent?.ticketTypes?.length
+      ? dbEvent.ticketTypes.map(t => ({
+          name:         t.name,
+          price:        t.price,
+          priceInCents: t.price * 100,
+          quantity:     t.quantity,
+          sold:         t.sold
+        }))
+      : (eventData.ticket_classes || []).map(tc => ({
+          name:         tc.name,
+          price:        tc.cost ? (tc.cost.value / 100) : 0,
+          priceInCents: tc.cost ? tc.cost.value : 0,
+          quantity:     tc.quantity_total || 36,
+          sold:         tc.quantity_sold || 0
+        }));
+
+    // FAQs — DB only (Eventbrite REST API does not expose FAQ answers)
+    const faqs = dbEvent?.faqs?.length ? dbEvent.faqs : [];
+
+    // Highlights — prefer DB, fall back to parsed Eventbrite fields
+    const highlights = dbEvent?.highlights?.length
+      ? dbEvent.highlights
+      : parseHighlights(eventData);
+
+    // Agenda — prefer DB, fall back to structured content API
+    const agenda = dbEvent?.agenda?.length
+      ? dbEvent.agenda
+      : parseAgenda(structuredData);
+
+    // Location — prefer DB, fall back to Eventbrite venue
+    const location = (dbEvent?.location?.name || dbEvent?.location?.address)
+      ? dbEvent.location
+      : parseLocation(eventData);
 
     res.json({
-      title:       eventData.name?.text || '',
-      description: eventData.description?.html || '',
-      image:       eventData.logo?.original?.url || '',
+      title:       eventData.name?.text || dbEvent?.name || '',
+      description: eventData.description?.html || dbEvent?.description || '',
+      image:       eventData.logo?.original?.url || dbEvent?.coverImage || '',
       start:       eventData.start?.local || '',
       end:         eventData.end?.local || '',
-      location:    parseLocation(eventData),
-      agenda:      parseAgenda(structuredData),
-      highlights:  parseHighlights(eventData),
+      location,
+      agenda,
+      highlights,
+      faqs,
       ticketTiers
     });
 
@@ -781,7 +809,9 @@ router.get('/external/:eventId', async (req, res, next) => {
 
 /* -------------------------------------------------------
    POST /api/events/checkout
-   Public — Multi-ticket/Multi-event bundle checkout (Capped at 15%)
+   Public — Multi-ticket/Multi-event bundle checkout
+   2 different events = 5% off
+   3+ different events = 10% off
 ------------------------------------------------------- */
 router.post('/checkout', async (req, res, next) => {
   try {
@@ -801,11 +831,11 @@ router.post('/checkout', async (req, res, next) => {
     let discountLabel = '';
 
     if (uniqueEventIds.length === 2) {
+      discountMultiplier = 0.95;
+      discountLabel = ' (5% Multi-Event Bundle Discount Applied)';
+    } else if (uniqueEventIds.length >= 3) {
       discountMultiplier = 0.90;
       discountLabel = ' (10% Multi-Event Bundle Discount Applied)';
-    } else if (uniqueEventIds.length >= 3) {
-      discountMultiplier = 0.85;
-      discountLabel = ' (15% Max Multi-Event Bundle Discount Applied)';
     }
 
     const lineItems = cartItems.map((item) => {
@@ -1076,7 +1106,7 @@ router.post('/webhook/stripe', async (req, res, next) => {
     }
     stripeEvent = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
-    console.error(`❌ Stripe Webhook Verification Failure: ${err.message}`);
+    console.error(`Stripe Webhook Verification Failure: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -1087,30 +1117,30 @@ router.post('/webhook/stripe', async (req, res, next) => {
       if (session.metadata && session.metadata.cartDetails) {
         const purchasedCart = JSON.parse(session.metadata.cartDetails);
 
-        console.log(`📡 Stripe Webhook Processed: Syncing ${purchasedCart.length} inventory lines...`);
+        console.log(`Stripe Webhook: Syncing ${purchasedCart.length} ticket line(s)...`);
 
         for (const item of purchasedCart) {
           const updatedEvent = await Event.findOneAndUpdate(
-            { 
-              _id: item.eventId, 
-              "ticketTypes._id": item.ticketTypeId 
+            {
+              _id: item.eventId,
+              "ticketTypes._id": item.ticketTypeId
             },
-            { 
-              $inc: { "ticketTypes.$.sold": Number(item.qty) } 
+            {
+              $inc: { "ticketTypes.$.sold": Number(item.qty) }
             },
             { new: true }
           );
 
           if (updatedEvent) {
-            console.log(`📈 Synchronized Ticket: Increased "${item.ticketName}" count by +${item.qty}.`);
+            console.log(`Ticket synced: "${item.ticketName}" +${item.qty}`);
           } else {
-            console.warn(`⚠️ Inventory Mismatch: Unable to credit ticket category ID: ${item.ticketTypeId}`);
+            console.warn(`Inventory mismatch: could not find ticket ID ${item.ticketTypeId}`);
           }
         }
       }
     } catch (processErr) {
-      console.error(`❌ Critical layout failure parsing item metrics:`, processErr);
-      return res.status(500).json({ error: 'Internal transactional matrix fault.' });
+      console.error(`Error processing Stripe webhook cart:`, processErr);
+      return res.status(500).json({ error: 'Internal error processing webhook.' });
     }
   }
 
@@ -1119,7 +1149,7 @@ router.post('/webhook/stripe', async (req, res, next) => {
 
 /* -------------------------------------------------------
    POST /api/events/webhook/eventbrite
-   Public — Automated Background Sync Listening for Eventbrite updates
+   Public — Automated Background Sync from Eventbrite
 ------------------------------------------------------- */
 router.post('/webhook/eventbrite', async (req, res, next) => {
   try {
@@ -1127,13 +1157,18 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
     const TOKEN = process.env.EVENTBRITE_PRIVATE_TOKEN;
     const action = req.body.action || req.body.config?.action || req.headers['x-eventbrite-event'];
 
-    console.log(`📡 Eventbrite Webhook Triggered: Action -> ${action}`);
+    console.log(`Eventbrite Webhook Triggered: Action -> ${action}`);
 
-    if (action === 'event.updated' || action === 'event.published' || action === 'event.created' || action === 'test') {
+    if (
+      action === 'event.updated' ||
+      action === 'event.published' ||
+      action === 'event.created' ||
+      action === 'test'
+    ) {
 
-      // Handle Eventbrite manual mock test hook cleanly
+      // Handle manual test hook
       if (action === 'test' || !api_url || api_url.includes('{api-endpoint-to-fetch-object-details}')) {
-        console.log("📝 Manual Test Hook detected. Seeding structural mock ticket options...");
+        console.log("Manual test hook detected. Seeding mock event data...");
 
         const testPayload = {
           name:        "GFC Elite Masterclass & Gathering",
@@ -1147,22 +1182,31 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
             state:   "GA",
             zip:     ""
           },
-          status:   "published",
-          capacity: 50,
+          status:       "published",
+          capacity:     50,
           eventbriteId: "15833661",
           ticketTypes: [
-            { name: "Early Bird Entry Pass",   price: 30, quantity: 20, sold: 0 },
-            { name: "General Admission Pass",  price: 35, quantity: 30, sold: 0 }
+            { name: "Early Bird Entry Pass",  price: 30, quantity: 20, sold: 0 },
+            { name: "General Admission Pass", price: 35, quantity: 30, sold: 0 }
           ],
+          highlights: ["2 hours 30 minutes", "Ages 35+", "In Person", "Free Parking", "Doors at 6:15 PM"],
           agenda: [
-            { time: "6:00 PM", title: "Doors Open",        description: "Arrive, settle in, and connect with fellow attendees." },
-            { time: "6:30 PM", title: "Welcome Remarks",   description: "Opening words and the evening's agenda overview." },
-            { time: "7:00 PM", title: "Main Experience",   description: "The curated collective experience begins." },
-            { time: "9:00 PM", title: "Evening Closes",    description: "Thank you for being here." }
+            { time: "6:15 PM", title: "Doors Open",                      description: "Arrive and get settled." },
+            { time: "6:30 PM", title: "Welcome & The Toast",             description: "Receive your GFC signature mocktail and kick off the evening with a toast." },
+            { time: "6:40 PM", title: "Intentional Conversations Begin", description: "GFC Conversation Cards hit the tables. Real dialogue starts here." },
+            { time: "9:00 PM", title: "Evening Closes",                  description: "Thank you for being here." }
           ],
-          highlights: ["In Person", "Limited Seating", "Alcohol-Free"],
           faqs: [
-            { question: "Are mocktails provided?",  answer: "Yes, a premium selection of artisanal curated mocktails is fully included with every pass tier entry." }
+            { question: "Where do I park?",                              answer: "Parking is free. Complimentary parking is directly behind the building, with overflow parking in the lot across the street." },
+            { question: "What is the dress code?",                       answer: "Casual — think put-together but relaxed. Come looking good and feeling comfortable." },
+            { question: "Is this event really for adults 35 and older?", answer: "Yes. This experience is exclusively designed for professionals, entrepreneurs, and executives 35 and older." },
+            { question: "What's included with my ticket?",               answer: "Your ticket includes hors d'oeuvres and one GFC signature mocktail crafted by Aromas Tea Bar." },
+            { question: "Is alcohol served at this event?",              answer: "No. This is a fully alcohol-free and smoke-free event." },
+            { question: "What are the GFC Conversation Cards?",          answer: "Signature cards designed to skip small talk and spark real, meaningful dialogue." },
+            { question: "Can I bring a guest or plus one?",              answer: "Yes — every attendee must purchase a ticket in advance. Spots are limited." },
+            { question: "Can I buy a ticket at the door?",               answer: "No. All sales close before the event date. Secure your spot in advance." },
+            { question: "What is your refund policy?",                   answer: "All ticket sales are final and non-refundable. You may transfer your ticket to another eligible guest (35+)." },
+            { question: "What if I have a dietary restriction?",         answer: "Limited vegetarian and vegan options will be available. Please reach out in advance so we can accommodate you." }
           ]
         };
 
@@ -1176,27 +1220,28 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
       }
 
       if (!TOKEN) {
-        console.error("❌ Cannot sync with Eventbrite: EVENTBRITE_PRIVATE_TOKEN is missing in .env.");
+        console.error("EVENTBRITE_PRIVATE_TOKEN is missing in environment.");
         return res.status(500).json({ error: 'Server authentication misconfigured.' });
       }
 
-      // Extract the event ID from the api_url so we can call our shared helper
+      // Extract event ID from api_url
       const eventIdMatch = api_url.match(/events\/(\d+)/);
       if (!eventIdMatch) {
-        console.error("❌ Could not extract event ID from api_url:", api_url);
+        console.error("Could not extract event ID from api_url:", api_url);
         return res.status(400).json({ error: 'Could not parse event ID from webhook payload.' });
       }
       const eventId = eventIdMatch[1];
 
-      // Fetch full event data + structured content in parallel
       const { eventData: ebEvent, structuredData } = await fetchEventbriteFullData(eventId, TOKEN);
 
       if (!ebEvent) {
-        console.error(`❌ Failed to fetch fresh webhook payload from Eventbrite for event: ${eventId}`);
+        console.error(`Failed to fetch Eventbrite data for event: ${eventId}`);
         return res.status(400).send('Failed to fetch resource state');
       }
 
-      // Translate ticket classes into schema format
+      // Find existing DB record to preserve manually-entered FAQs, highlights, agenda
+      const existingEvent = await Event.findOne({ eventbriteId: ebEvent.id });
+
       const formattedTicketTypes = (ebEvent.ticket_classes || []).map((tc) => ({
         name:        tc.name || 'General Admission Pass',
         price:       tc.cost ? (tc.cost.value / 100) : 0,
@@ -1205,34 +1250,35 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
         description: tc.description || ''
       }));
 
-      // Build the full sync payload
+      const agendaFromStructured  = parseAgenda(structuredData);
+      const highlightsFromEvent   = parseHighlights(ebEvent);
+
       const syncPayload = {
         name:        ebEvent.name?.text || 'Untitled Gathering',
         description: ebEvent.description?.html || 'No description provided.',
         date:        new Date(ebEvent.start?.utc || Date.now()),
         endDate:     new Date(ebEvent.end?.utc   || Date.now() + 3 * 60 * 60 * 1000),
         location: {
-          name:    ebEvent.venue?.name                  || 'Atlanta Curated Location',
-          address: ebEvent.venue?.address?.address_1    || '',
-          city:    ebEvent.venue?.address?.city         || 'Atlanta',
-          state:   ebEvent.venue?.address?.region       || 'GA',
-          zip:     ebEvent.venue?.address?.postal_code  || ''
+          name:    ebEvent.venue?.name                 || 'Atlanta Curated Location',
+          address: ebEvent.venue?.address?.address_1   || '',
+          city:    ebEvent.venue?.address?.city        || 'Atlanta',
+          state:   ebEvent.venue?.address?.region      || 'GA',
+          zip:     ebEvent.venue?.address?.postal_code || ''
         },
-        status:       ebEvent.status === 'live' ? 'published' : 'draft',
-        capacity:     ebEvent.capacity || 36,
-        ticketTypes:  formattedTicketTypes,
-        agenda:       parseAgenda(structuredData),
-        highlights:   parseHighlights(ebEvent),
-        faqs: [
-          {
-            question: "What is the policy regarding dynamic refunds?",
-            answer:   "All sales are final. Individual tickets are completely non-refundable due to curated venue, structural catering, and operational arrangements."
-          },
-          {
-            question: "Can I transfer my entry reservation pass?",
-            answer:   "Yes. Entry reservation passes can be fully assigned to another verified individual up to 24 hours prior to the session start time."
-          }
-        ],
+        status:      ebEvent.status === 'live' ? 'published' : 'draft',
+        capacity:    ebEvent.capacity || 36,
+        ticketTypes: formattedTicketTypes,
+
+        // Only overwrite agenda/highlights/faqs if the DB has none saved yet
+        ...(!existingEvent?.agenda?.length     && agendaFromStructured.length  && { agenda:     agendaFromStructured }),
+        ...(!existingEvent?.highlights?.length && highlightsFromEvent.length   && { highlights: highlightsFromEvent }),
+        ...(!existingEvent?.faqs?.length && {
+          faqs: [
+            { question: "What is your refund policy?", answer: "All sales are final. Tickets are non-refundable but may be transferred to another eligible guest up to 24 hours before the event." },
+            { question: "Can I transfer my ticket?",   answer: "Yes. Entry passes can be transferred to another verified individual up to 24 hours prior to the event start time." }
+          ]
+        }),
+
         ...(ebEvent.logo?.original?.url && { coverImage: ebEvent.logo.original.url })
       };
 
@@ -1242,13 +1288,13 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
         { new: true, upsert: true }
       );
 
-      console.log(`Base Schema Synchronized: "${updatedDocument.name}" is now updated internally.`);
+      console.log(`Synced: "${updatedDocument.name}" | Tickets: ${updatedDocument.ticketTypes.length} | Agenda: ${updatedDocument.agenda?.length || 0} | FAQs: ${updatedDocument.faqs?.length || 0}`);
     }
 
     return res.status(200).json({ received: true });
 
   } catch (err) {
-    console.error("❌ Error executing Eventbrite webhook sync:", err.message);
+    console.error("Eventbrite webhook error:", err.message);
     return res.status(200).json({ error: err.toString() });
   }
 });
