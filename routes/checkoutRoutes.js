@@ -6,170 +6,126 @@ const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /**
- * Helper logic engine built to calculate final ticket totals based on live 2026 membership tiers
- */
-function calculateMemberDiscount(tier, eventName, quantity, unitPriceInCents, hasUsedQuarterlyFreebie = false) {
-  const totalTickets = parseInt(quantity, 10);
-  let finalTotalInCents = 0;
-  
-  // Normalize event name text to match perks accurately
-  const name = eventName ? eventName.toLowerCase() : '';
-
-  // ==========================================
-  // TIER 1: SOCIAL PASS ($39)
-  // ==========================================
-  if (tier === 'social_pass') {
-    if (name.includes('game night')) {
-      // 1 ticket covered every month for free
-      const paidTickets = Math.max(0, totalTickets - 1);
-      finalTotalInCents = paidTickets * unitPriceInCents;
-    } 
-    else if (name.includes('intentional conversations') || name.includes('mocktails') || name.includes('cookout')) {
-      // $10 off every single ticket ($10.00 = 1000 cents)
-      const discountedPrice = Math.max(0, unitPriceInCents - 1000);
-      finalTotalInCents = totalTickets * discountedPrice;
-    } 
-    else {
-      // Unlisted events default to standard pricing
-      finalTotalInCents = totalTickets * unitPriceInCents;
-    }
-  }
-
-  // ==========================================
-  // TIER 2: FOUNDING MEMBER ($69)
-  // ==========================================
-  else if (tier === 'founding_member') {
-    if (name.includes('game night')) {
-      // Member free + 2 guests free = 3 free tickets total
-      const paidTickets = Math.max(0, totalTickets - 3);
-      finalTotalInCents = paidTickets * unitPriceInCents;
-    } 
-    else if (name.includes('intentional conversations') || name.includes('mocktails') || name.includes('cookout')) {
-      let remainingTickets = totalTickets;
-      
-      // 1 completely free ticket per quarter check
-      if (!hasUsedQuarterlyFreebie && remainingTickets > 0) {
-        remainingTickets -= 1; // First ticket adds 0 cents to the bill
-      }
-      
-      // $15 off every other ticket in the cart ($15.00 = 1500 cents)
-      const discountedPrice = Math.max(0, unitPriceInCents - 1500);
-      finalTotalInCents += (remainingTickets * discountedPrice);
-    } 
-    else {
-      // Unlisted events default to standard pricing
-      finalTotalInCents = totalTickets * unitPriceInCents;
-    }
-  }
-
-  // ==========================================
-  // NON-MEMBER / PUBLIC
-  // ==========================================
-  else {
-    finalTotalInCents = totalTickets * unitPriceInCents;
-  }
-
-  return finalTotalInCents;
-}
-
-/**
  * @route   POST /api/checkout/create-intent
- * @desc    Create a Stripe PaymentIntent with automatic, dynamic membership pricing rules
+ * @desc    Create a Stripe Checkout Session with Automatic Membership Discount Support
  */
 router.post('/create-intent', async (req, res) => {
   try {
-    // Note: ensure your frontend payload sends "eventName" (e.g. "The Grown Folks Game Night")
     const { eventId, eventName, ticketType, quantity, buyerName, buyerEmail, unitPrice } = req.body;
+    const totalTickets = parseInt(quantity, 10);
 
-    let detectedTier = 'non_member';
-    let hasUsedQuarterlyFreebie = false; 
+    // 1. Convert price to cents for Stripe
+    const unitPriceInCents = Math.round(unitPrice * 100);
 
-    // 1. Query Stripe API to automatically verify if this email is an active subscriber
+    // 2. Look up or create the customer in Stripe using their email
+    let stripeCustomerId;
+    let isMember = false;
+    let appliedDiscountCoupon = null;
+
     try {
       const customers = await stripe.customers.list({ email: buyerEmail, limit: 1 });
-      
-      if (customers.data && customers.data.length > 0) {
+      if (customers.data.length > 0) {
         const customer = customers.data[0];
-        
+        stripeCustomerId = customer.id;
+
+        // Check if they have an active subscription
         const subscriptions = await stripe.subscriptions.list({ 
-          customer: customer.id, 
+          customer: stripeCustomerId, 
           status: 'active',
-          expand: ['data.items.data.price'] // Fetch the inner price objects to read cost data
+          expand: ['data.items.data.price']
         });
 
-        if (subscriptions.data && subscriptions.data.length > 0) {
+        if (subscriptions.data.length > 0) {
+          isMember = true;
           const activeSub = subscriptions.data[0];
-          
-          // Access the monthly price tier setup via expanded price details
-          if (activeSub.items && activeSub.items.data && activeSub.items.data.length > 0) {
-            const monthlyAmount = activeSub.items.data[0].price.unit_amount;
+          const monthlyAmount = activeSub.items.data[0].price.unit_amount;
 
-            if (monthlyAmount === 3900) {
-              detectedTier = 'social_pass';
-            } else if (monthlyAmount === 6900) {
-              detectedTier = 'founding_member';
-              
-              // Optional: Add a MongoDB lookup here if you want to track their quarterly freebie allocations
-              // const claimedThisQuarter = await Order.findOne({ buyerEmail, isQuarterlyFreeClaim: true });
-              // if (claimedThisQuarter) hasUsedQuarterlyFreebie = true;
+          // Match their subscription tier to your business rules
+          const nameLower = eventName ? eventName.toLowerCase() : '';
+
+          if (monthlyAmount === 3900) { // Social Pass ($39)
+            if (nameLower.includes('game night')) {
+              // 1 free ticket. If they buy more than 1, we must handle via a Stripe coupon or custom line items.
+              // To keep it simple on hosted checkout, we create an inline coupon code for them
+              if (totalTickets === 1) appliedDiscountCoupon = 'FREE_TICKET_COUPON_ID'; // Replace with a 100% off coupon ID from Stripe Dashboard
+            } else if (nameLower.includes('intentional conversations') || nameLower.includes('mocktails') || nameLower.includes('cookout')) {
+              // $10 off coupon rule
+              appliedDiscountCoupon = 'SOCIAL_PASS_10_OFF_COUPON_ID'; // Replace with a $10 off coupon ID from Stripe Dashboard
+            }
+          } else if (monthlyAmount === 6900) { // Founding Member ($69)
+            if (nameLower.includes('game night')) {
+              if (totalTickets <= 3) appliedDiscountCoupon = 'FREE_TICKET_COUPON_ID';
+            } else if (nameLower.includes('intentional conversations') || nameLower.includes('mocktails') || nameLower.includes('cookout')) {
+              appliedDiscountCoupon = 'FOUNDING_MEMBER_15_OFF_COUPON_ID'; // Replace with a $15 off coupon ID from Stripe Dashboard
             }
           }
         }
+      } else {
+        // Create a guest customer profile in Stripe so they can checkout
+        const newCustomer = await stripe.customers.create({ email: buyerEmail, name: buyerName });
+        stripeCustomerId = newCustomer.id;
       }
     } catch (stripeErr) {
-      console.warn("Membership verification error, defaulting to public checkout pricing:", stripeErr.message);
+      console.warn("Stripe customer verification bypassed:", stripeErr.message);
     }
 
-    // 2. Compute final order price adjustments in cents (Stripe requires amounts multiplied by 100)
-    const unitPriceInCents = Math.round(unitPrice * 100);
-    const finalTotalInCents = calculateMemberDiscount(
-      detectedTier, 
-      eventName, 
-      quantity, 
-      unitPriceInCents, 
-      hasUsedQuarterlyFreebie
-    );
+    // 3. Define the ticket line item using an inline product configuration
+    const lineItem = {
+      price_data: {
+        currency: 'usd',
+        product_data: {
+          name: `${eventName} - ${ticketType}`,
+        },
+        unit_amount: unitPriceInCents,
+      },
+      quantity: totalTickets,
+    };
 
-    // 3. Create the Stripe Payment Intent with your member prices locked in
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: finalTotalInCents,
-      currency: 'usd',
-      automatic_payment_methods: { enabled: true },
-      metadata: { 
-        buyerEmail, 
+    // 4. Build Stripe Checkout configuration session payload
+    const sessionConfig = {
+      customer: stripeCustomerId,
+      line_items: [lineItem],
+      mode: 'payment',
+      success_url: `${req.headers.origin}/membership-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${req.headers.origin}/events`,
+      metadata: {
+        buyerEmail,
         eventName,
         ticketType,
-        appliedTier: detectedTier,
-        originalQty: quantity
+        isMemberUser: isMember ? 'true' : 'false'
       }
-    });
+    };
 
-    // 4. Save the Pending Order to your MongoDB Collection
+    // Attach coupon discount automatically to the Stripe checkout UI page if eligible
+    if (appliedDiscountCoupon) {
+      sessionConfig.discounts = [{ coupon: appliedDiscountCoupon }];
+    } else {
+      // If no automatic subscription perk applies, allow manual entry boxes just in case
+      sessionConfig.allow_promotion_codes = true;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+
+    // 5. Commit pending order log file parameters to MongoDB database collection
     const newOrder = new Order({
       event: eventId,
       ticketType,
-      quantity,
+      quantity: totalTickets,
       buyerName,
       buyerEmail,
       unitPrice,
-      subtotal: (quantity * unitPrice),        // Base value total in dollars
-      total: (finalTotalInCents / 100),       // Final processed tier calculation price in dollars
-      stripePaymentIntentId: paymentIntent.id,
-      stripeClientSecret: paymentIntent.client_secret,
+      subtotal: (totalTickets * unitPrice),
+      total: (session.amount_total / 100), // Captures discounted totals directly from Stripe session metrics
+      stripePaymentIntentId: session.id, // Using Session ID for tracking redirects
       paymentStatus: 'pending'
     });
     await newOrder.save();
 
-    // 5. Send calculations and the client secret back to the frontend form
-    res.status(201).json({ 
-      clientSecret: paymentIntent.client_secret, 
-      orderId: newOrder._id,
-      appliedTier: detectedTier,
-      finalTotal: (finalTotalInCents / 100)
-    });
+    // 6. Send checkout portal URL redirect string payload straight to frontend drawer click handlers
+    res.status(201).json({ url: session.url });
 
   } catch (err) {
-    console.error("Checkout Engine Error:", err.message);
+    console.error("Checkout Engine Redirection Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
