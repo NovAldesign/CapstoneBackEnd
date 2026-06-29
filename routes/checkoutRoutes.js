@@ -6,8 +6,8 @@ const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /**
- * @route   POST /api/checkout/create-intent
- * @desc    Create a Stripe Checkout Session with perfect quantity limits
+ * @route POST /api/checkout/create-intent
+ * @desc Create a Stripe Checkout Session with perfect quantity limits
  */
 router.post('/create-intent', async (req, res) => {
   try {
@@ -24,9 +24,8 @@ router.post('/create-intent', async (req, res) => {
       const customers = await stripe.customers.list({ email: buyerEmail, limit: 1 });
       if (customers.data.length > 0) {
         stripeCustomerId = customers.data[0].id;
-
-        const subscriptions = await stripe.subscriptions.list({ 
-          customer: stripeCustomerId, 
+        const subscriptions = await stripe.subscriptions.list({
+          customer: stripeCustomerId,
           status: 'active',
           expand: ['data.items.data.price']
         });
@@ -74,8 +73,7 @@ router.post('/create-intent', async (req, res) => {
           quantity: totalTickets - 1,
         });
       }
-    } 
-    else if (memberTier === 'founding_member' && nameLower.includes('game night')) {
+    } else if (memberTier === 'founding_member' && nameLower.includes('game night')) {
       // Rule: Up to 3 Free tickets (Member + 2 guests)
       const freeCount = Math.min(3, totalTickets);
       const paidCount = Math.max(0, totalTickets - 3);
@@ -95,13 +93,11 @@ router.post('/create-intent', async (req, res) => {
           price_data: {
             currency: 'usd',
             product_data: { name: `${eventName} - ${ticketType} (Additional passes)` },
-            unit_amount: unitPriceInCents,
           },
           quantity: paidCount,
         });
       }
-    } 
-    else {
+    } else {
       // Standard flow for Mocktails, Cookouts, or non-members
       lineItems.push({
         price_data: {
@@ -127,6 +123,7 @@ router.post('/create-intent', async (req, res) => {
       mode: 'payment',
       success_url: `${req.headers.origin}/membership-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.headers.origin}/events`,
+      phone_number_collection: { enabled: true }, // 👈 ONLY NEW ADDITION
       metadata: { buyerEmail, eventName, ticketType, memberTier }
     };
 
@@ -152,10 +149,10 @@ router.post('/create-intent', async (req, res) => {
       stripePaymentIntentId: session.id,
       paymentStatus: 'pending'
     });
+
     await newOrder.save();
 
     res.status(201).json({ url: session.url });
-
   } catch (err) {
     console.error("Checkout Engine Error:", err.message);
     res.status(500).json({ error: err.message });
