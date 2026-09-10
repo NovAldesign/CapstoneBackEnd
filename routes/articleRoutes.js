@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const Article = require('../models/article');
+const Article = require('../models/articleSchema');
 
 // GET all articles (for your main Blog page)
 router.get('/', async (req, res) => {
