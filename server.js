@@ -26,6 +26,7 @@ import eventRoutes from "./routes/eventRoutes.js"; // Handles our new /external/
 import partnershipRoutes from "./routes/partnershipRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import travelRoutes from "./routes/travelRoutes.js";
+import articleRoutes from "./routes/articleRoutes.js"; // Added Article/Blog Routes
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -107,6 +108,7 @@ app.use("/api/events",       eventRoutes);      // Matches /api/events/external/
 app.use("/api/partnerships", partnershipRoutes);
 app.use("/api/contact",      contactRoutes);
 app.use("/api/travel",       travelRoutes);
+app.use("/api/articles",     articleRoutes);    // Mounted Blog/Article API routes
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 
 // -------------------------------------------------------
