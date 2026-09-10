@@ -1,8 +1,9 @@
-const express = require('express');
-const router = express.Router();
-const Article = require('../models/articleSchema');
+import express from 'express';
+import Article from '../models/articleSchema.js'; // Explicit .js extension required in ES Modules
 
-// GET all articles (for your main Blog page)
+const router = express.Router();
+
+// GET all articles
 router.get('/', async (req, res) => {
   try {
     const articles = await Article.find().sort({ publishedAt: -1 });
@@ -12,7 +13,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET a single article by slug (for reading full posts)
+// GET single article by slug
 router.get('/:slug', async (req, res) => {
   try {
     const article = await Article.findOne({ slug: req.params.slug });
@@ -44,4 +45,4 @@ router.post('/', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
