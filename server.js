@@ -27,6 +27,7 @@ import partnershipRoutes from "./routes/partnershipRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import travelRoutes from "./routes/travelRoutes.js";
 import articleRoutes from "./routes/articleRoutes.js"; // Added Article/Blog Routes
+import subscriberRoutes from "./routes/subscriberRoutes.js"; //Added Subscriber Routes
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -110,6 +111,7 @@ app.use("/api/contact",      contactRoutes);
 app.use("/api/travel",       travelRoutes);
 app.use("/api/articles",     articleRoutes);    // Mounted Blog/Article API routes
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
+app.use("/api/subscribers", subscriberRoutes);
 
 // -------------------------------------------------------
 // 8. STRIPE CANCEL REDIRECT LAYER
