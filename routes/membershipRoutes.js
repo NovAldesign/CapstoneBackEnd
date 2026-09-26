@@ -11,22 +11,65 @@ const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+const TEAM_EMAIL = 'community@grownfolkscollective.com';
+
+const TIER_LABELS = {
+  Founding: 'Founding Member ($69.99/mo)',
+  Social: 'Social Pass ($39.99/mo)',
+};
+
+// Keeps names and answers people type from breaking the email layout
+const escapeHtml = (value = '') =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 // -------------------------------------------------------------------------
 // ── 1. STANDARD MEMBERSHIP SIGNUP ROUTE ──
 // Handles the public registration form data hitting: POST /api/membership
 // -------------------------------------------------------------------------
 router.post('/', async (req, res, next) => {
   try {
-    // 1. Create the pending member record inside MongoDB using the form text body
-    const newMember = new Membership({
-      ...req.body,
-      status: 'pending' // Keeps them pending until checkout completion logs a success
-    });
-    const savedMember = await newMember.save();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const phone = String(req.body.phone || '').trim();
+
+    // Only accept the fields the form is supposed to send
+    const formData = {
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      email,
+      phone,
+      dob: req.body.dob,
+      tier: req.body.tier,
+      connectionGoals: req.body.connectionGoals,
+      submittedAt: new Date(),
+    };
+
+    // 1. If this email already applied, reuse that record instead of failing
+    let savedMember = await Membership.findOne({ email });
+
+    if (savedMember && savedMember.status === 'active') {
+      return res.status(409).json({
+        error: "You're already a member! Check your email for your welcome message, or contact us if you need help.",
+      });
+    }
+
+    const isReturning = Boolean(savedMember);
+
+    if (savedMember) {
+      // Came back to finish joining (or switched tiers) — update their application
+      savedMember.set({ ...formData, status: 'pending' });
+      savedMember = await savedMember.save();
+    } else {
+      savedMember = await new Membership({ ...formData, status: 'pending' }).save();
+    }
 
     // Adjusted map variables to match your backend .env keys exactly
-    const priceId = req.body.tier === 'Founding' 
-      ? process.env.STRIPE_PRICE_FOUNDING 
+    const priceId = savedMember.tier === 'Founding'
+      ? process.env.STRIPE_PRICE_FOUNDING
       : process.env.STRIPE_PRICE_SOCIAL;
 
     // 2. Generate a secure custom Stripe Checkout Session
@@ -37,8 +80,8 @@ router.post('/', async (req, res, next) => {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/membership/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.BACKEND_URL || 'https://capstonebackend-production-87ed.up.railway.app'}/membership/cancelled`,
-      
-      // SAFE BACKUP CHECK: Prevents server crash if savedMember.name is missing or malformed
+
+      // SAFE BACKUP CHECK: Prevents server crash if a field is missing or malformed
       metadata: {
         memberId: savedMember._id.toString(),
         tier: savedMember.tier || 'Social',
@@ -46,13 +89,53 @@ router.post('/', async (req, res, next) => {
       }
     });
 
+    // 3. Let the team know someone applied (they haven't paid yet).
+    //    Never blocks the signup — if the email fails, the member still gets to Stripe.
+    resend.emails.send({
+      from: 'GFC Registration Monitor <noreply@grownfolkscollective.com>',
+      to: TEAM_EMAIL,
+      subject: `📝 New Membership Application: ${savedMember.firstName} ${savedMember.lastName} (not paid yet)`,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; color: #002147;">
+          <h2 style="border-bottom: 2px solid #C5A059; padding-bottom: 10px;">
+            ${isReturning ? 'Returning Applicant' : 'New Membership Application'}
+          </h2>
+          <p><strong>Name:</strong> ${escapeHtml(savedMember.firstName)} ${escapeHtml(savedMember.lastName)}</p>
+          <p><strong>Email:</strong> ${escapeHtml(savedMember.email)}</p>
+          <p><strong>Phone:</strong> ${escapeHtml(savedMember.phone)}</p>
+          <p><strong>Tier Selected:</strong> ${escapeHtml(TIER_LABELS[savedMember.tier] || savedMember.tier)}</p>
+          <p><strong>Most excited about:</strong> ${escapeHtml(savedMember.connectionGoals?.primaryInterest || 'N/A')}</p>
+          <p><strong>What's kept them from connecting:</strong> ${escapeHtml(savedMember.connectionGoals?.isolationBarrier || 'N/A')}</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+          <p style="color: #888; font-size: 12px;">
+            They were just sent to Stripe to pay. You'll get a separate "New Member Activation" email if they finish.
+            If that email never arrives, they didn't complete payment — a personal follow-up can help.
+          </p>
+        </div>
+      `
+    }).catch((err) => console.error('❌ Application notice email failed:', err.message));
+
     // Send the Stripe URL straight back to the React client to initiate a smooth checkout redirect
     return res.status(201).json({ url: session.url, memberId: savedMember._id });
   } catch (error) {
     console.error("❌ Error initiating application workflow:", error.message);
-    
-    // Instead of crashing, let's catch the error and pass a clean response back to the client
-    return res.status(500).json({ error: `❌ ${error.toString()}` });
+
+    // Phone number already used by a different email
+    if (error.code === 11000 && error.keyPattern?.phone) {
+      return res.status(409).json({
+        error: 'That phone number is already linked to another application. Please use a different number or contact us.',
+      });
+    }
+
+    // Missing or invalid form fields
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        error: 'Some of your details look incomplete. Please check your name, email, phone, and date of birth, then try again.',
+      });
+    }
+
+    // Instead of crashing, pass a clean response back to the client
+    return res.status(500).json({ error: 'Something went wrong starting your membership. Please try again or contact us.' });
   }
 });
 
@@ -75,23 +158,29 @@ router.post('/webhook', async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // ── A. Payment completed → member is active ──
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    
+
     const { memberId, tier, firstName } = session.metadata || {};
-    const customerEmail = session.customer_email;
+    const customerEmail = session.customer_email || session.customer_details?.email;
 
     try {
-      // 1. Instantly advance their database application state to active
+      // 1. Mark them active and save their Stripe IDs
       if (memberId) {
-        await Membership.findByIdAndUpdate(memberId, { status: 'active' });
+        await Membership.findByIdAndUpdate(memberId, {
+          status: 'active',
+          paidAt: new Date(),
+          stripeCustomerId: session.customer || '',
+          stripeSubscriptionId: session.subscription || '',
+        });
         console.log(`✅ Member database status advanced to active for ID: ${memberId}`);
       }
 
-      // 2. Dispatch automated email confirmations using your verified catch-all template
+      // 2. Send confirmation emails
       if (customerEmail) {
-        
-        // ── EMAIL A: Welcome confirmation sent directly to the new customer ──
+
+        // ── EMAIL A: Welcome confirmation sent directly to the new member ──
         await resend.emails.send({
           from: 'GFC <noreply@grownfolkscollective.com>',
           to: customerEmail,
@@ -106,7 +195,7 @@ router.post('/webhook', async (req, res) => {
             <body style="margin: 0; padding: 0; background-color: #F8F9FA; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
 
               <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; margin: 20px auto; border-collapse: collapse; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-                
+
                 <tr>
                   <td bgcolor="#002147" style="padding: 40px 20px; text-align: center;">
                     <h1 style="font-family: Georgia, serif; color: #C5A059; font-size: 2.2rem; margin: 0; font-weight: normal; letter-spacing: 2px;">
@@ -125,38 +214,39 @@ router.post('/webhook', async (req, res) => {
                 <tr>
                   <td style="padding: 48px 40px; background-color: #ffffff;">
                     <p style="font-size: 1.1rem; font-weight: 600; color: #002147; margin-top: 0; margin-bottom: 20px;">
-                      Welcome to the family, ${firstName || "there"}! ✨
+                      Welcome to the family, ${escapeHtml(firstName || 'there')}! ✨
                     </p>
-                    
+
                     <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin-bottom: 24px;">
-                      Your payment was successfully processed, and your membership status is officially <strong>Active</strong>. You have locked in your custom rate and community status for life.
+                      Your payment was successfully processed, and your membership is officially <strong>Active</strong>.
+                      ${tier === 'Founding' ? 'As a Founding Member, your rate is locked in for life.' : ''}
                     </p>
 
                     <div style="background-color: #FDFBFA; border-left: 3px solid #C5A059; padding: 20px 24px; margin: 32px 0; border-radius: 0 4px 4px 0;">
                       <p style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: #888888; margin: 0 0 6px;">Membership Level</p>
                       <p style="font-family: Georgia, serif; font-size: 1.3rem; font-weight: bold; color: #002147; margin: 0;">
-                        ${tier === 'Founding' ? 'Founding Member Pack ($69/mo)' : 'Social Pass ($39/mo)'}
+                        ${TIER_LABELS[tier] || TIER_LABELS.Social}
                       </p>
                     </div>
 
                     <h3 style="font-family: Georgia, serif; color: #002147; font-size: 1.1rem; margin-top: 32px; margin-bottom: 12px; font-weight: normal;">
                       What Happens Next:
                     </h3>
-                    
+
                     <ul style="padding-left: 20px; margin: 0 0 32px 0; color: #444444; font-size: 0.95rem; line-height: 1.8;">
                       <li style="margin-bottom: 10px;">
-                        <strong>Your Personal Member Code:</strong> Keep an eye on your inbox. We are currently generating your custom membership discount code and will email it to you shortly. You will use this code at checkout to automatically unlock your covered tickets and tier discounts for every event.
+                        <strong>Your Member Perks:</strong> We'll be in touch shortly with everything you need to use your monthly event credit, member pricing, and partner discounts.
                       </li>
                       <li style="margin-bottom: 10px;">
-                        <strong>Priority Event Booking:</strong> You now get 24 to 48 hours of early access notice via email to book all Game Nights, Intentional Dinners, and Cookouts before booking windows unlock for the general public.
+                        <strong>Early Access:</strong> Watch your inbox. Members hear about new events and get tickets before the public.
                       </li>
                       <li style="margin-bottom: 10px;">
-                        <strong>Genuine Connections:</strong> Your presence helps us foster a thoughtful, healthy social landscape for the 35+ community. No posturing or shallow small talk required—just real people showing up authentically to share space.
+                        <strong>Your People:</strong> We'll add you to our private member group chat so the connection keeps going between events.
                       </li>
                     </ul>
 
                     <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin-bottom: 40px;">
-                      We built this collective because meaningful connection shouldn't be hard to find as we get older. We can't wait to welcome you face-to-face very soon.
+                      We built this collective because grown life is better with your people, and real connection shouldn't be hard to find. We can't wait to welcome you face-to-face very soon.
                     </p>
 
                     <p style="font-size: 0.95rem; margin-top: 30px; font-weight: 600; color: #002147; margin-bottom: 4px;">
@@ -187,25 +277,59 @@ router.post('/webhook', async (req, res) => {
         // ── EMAIL B: Internal notification sent directly to your team account ──
         await resend.emails.send({
           from: 'GFC Registration Monitor <noreply@grownfolkscollective.com>',
-          to: 'community@grownfolkscollective.com',
+          to: TEAM_EMAIL,
           subject: `🔔 New Member Activation: ${firstName || 'A User'} has joined!`,
           html: `
             <div style="font-family: sans-serif; padding: 20px; color: #002147;">
               <h2 style="border-bottom: 2px solid #C5A059; padding-bottom: 10px;">New Membership Activated!</h2>
-              <p><strong>First Name:</strong> ${firstName || 'N/A'}</p>
-              <p><strong>Email Address:</strong> ${customerEmail}</p>
-              <p><strong>Tier Selected:</strong> ${tier || 'Social'}</p>
-              <p><strong>Database ID Link:</strong> ${memberId || 'N/A'}</p>
+              <p><strong>First Name:</strong> ${escapeHtml(firstName || 'N/A')}</p>
+              <p><strong>Email Address:</strong> ${escapeHtml(customerEmail)}</p>
+              <p><strong>Tier Selected:</strong> ${escapeHtml(TIER_LABELS[tier] || tier || 'Social')}</p>
+              <p><strong>Database ID Link:</strong> ${escapeHtml(memberId || 'N/A')}</p>
               <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-              <p style="color: #888; font-size: 12px;">This transaction has completed processing via Stripe and has updated Mongo status to active.</p>
+              <p style="color: #888; font-size: 12px;">This payment completed in Stripe, and the member's status is now active.</p>
             </div>
           `
         });
-        console.log(`📢 Internal notification email dispatched to community@grownfolkscollective.com`);
+        console.log(`📢 Internal notification email dispatched to ${TEAM_EMAIL}`);
       }
 
     } catch (error) {
       console.error(`❌ Webhook fulfillment operations errored:`, error);
+    }
+  }
+
+  // ── B. Subscription ended (canceled or payment failed for good) → mark canceled ──
+  if (event.type === 'customer.subscription.deleted') {
+    const subscription = event.data.object;
+
+    try {
+      const member = await Membership.findOneAndUpdate(
+        { stripeSubscriptionId: subscription.id },
+        { status: 'canceled' },
+        { new: true }
+      );
+
+      if (member) {
+        console.log(`🚪 Membership canceled for ${member.email}`);
+
+        await resend.emails.send({
+          from: 'GFC Registration Monitor <noreply@grownfolkscollective.com>',
+          to: TEAM_EMAIL,
+          subject: `🚪 Membership Canceled: ${member.firstName} ${member.lastName}`,
+          html: `
+            <div style="font-family: sans-serif; padding: 20px; color: #002147;">
+              <h2 style="border-bottom: 2px solid #C5A059; padding-bottom: 10px;">Membership Canceled</h2>
+              <p><strong>Name:</strong> ${escapeHtml(member.firstName)} ${escapeHtml(member.lastName)}</p>
+              <p><strong>Email:</strong> ${escapeHtml(member.email)}</p>
+              <p><strong>Tier:</strong> ${escapeHtml(TIER_LABELS[member.tier] || member.tier)}</p>
+              <p style="color: #888; font-size: 12px;">A quick personal check-in can help you learn why, or win them back.</p>
+            </div>
+          `
+        });
+      }
+    } catch (error) {
+      console.error(`❌ Cancellation handling errored:`, error);
     }
   }
 
