@@ -839,6 +839,11 @@ const makeDateConverter = (ebEvent) => {
   };
 };
 
+// -------------------------------------------------------
+// Helper — checks that an ID looks like a real database ID
+// -------------------------------------------------------
+const isValidId = (id) => /^[a-f0-9]{24}$/i.test(String(id));
+
 /* -------------------------------------------------------
    GET /api/events
    Public — published events only, upcoming first
@@ -948,6 +953,8 @@ router.get('/external/:eventId', async (req, res, next) => {
    Public — Multi-ticket/Multi-event bundle checkout
    2 different events = 5% off
    3+ different events = 10% off
+   Prices and availability always come from the database,
+   never from the browser.
 ------------------------------------------------------- */
 router.post('/checkout', async (req, res, next) => {
   try {
@@ -957,38 +964,112 @@ router.post('/checkout', async (req, res, next) => {
 
     const { cartItems, customerEmail } = req.body;
 
-    if (!cartItems || cartItems.length === 0) {
+    if (!Array.isArray(cartItems) || cartItems.length === 0) {
       return res.status(400).json({ error: 'Your cart is completely empty.' });
     }
+    if (cartItems.length > 40) {
+      return res.status(400).json({ error: 'Too many different tickets in one order.' });
+    }
 
-    const uniqueEventIds = [...new Set(cartItems.map(item => item.eventId))];
+    // Load the real events from the database
+    const eventIds = [...new Set(cartItems.map(i => String(i.eventId)))].filter(isValidId);
+    const events = await Event.find({ _id: { $in: eventIds }, status: 'published' });
+
+    // Add up how many of each ticket was requested
+    const requested = new Map();
+    for (const item of cartItems) {
+      const qty = Math.floor(Number(item.quantity));
+      if (!qty || qty < 1 || qty > 20) {
+        return res.status(400).json({ error: 'Please choose between 1 and 20 of each ticket.' });
+      }
+      const key = `${item.eventId}:${item.ticketTypeId}`;
+      requested.set(key, (requested.get(key) || 0) + qty);
+    }
+
+    // Check every ticket and use the database price
+    const now = new Date();
+    const verifiedItems = [];
+
+    for (const [key, qty] of requested) {
+      const [eventId, ticketTypeId] = key.split(':');
+      const event = events.find(e => String(e._id) === eventId);
+      if (!event) {
+        return res.status(400).json({ error: 'An event in your bag is no longer available. Please remove it and try again.' });
+      }
+      if (new Date(event.endDate || event.date) < now) {
+        return res.status(400).json({ error: `"${event.name}" has already happened. Please remove it from your bag.` });
+      }
+
+      const ticket = isValidId(ticketTypeId) ? event.ticketTypes.id(ticketTypeId) : null;
+      if (!ticket || ticket.hidden) {
+        return res.status(400).json({ error: `A ticket for "${event.name}" is no longer available. Please remove it and try again.` });
+      }
+      if (ticket.salesStart && ticket.salesStart > now) {
+        return res.status(400).json({ error: `"${ticket.name}" for "${event.name}" isn't on sale yet.` });
+      }
+      if (ticket.salesEnd && ticket.salesEnd < now) {
+        return res.status(400).json({ error: `"${ticket.name}" sales for "${event.name}" have ended. Please remove it from your bag and choose another ticket.` });
+      }
+
+      const remaining = ticket.quantity - (ticket.sold || 0);
+      if (remaining <= 0) {
+        return res.status(400).json({ error: `"${ticket.name}" for "${event.name}" is sold out.` });
+      }
+      if (remaining < qty) {
+        return res.status(400).json({ error: `Only ${remaining} "${ticket.name}" ticket${remaining === 1 ? '' : 's'} left for "${event.name}".` });
+      }
+
+      verifiedItems.push({
+        eventId:        String(event._id),
+        eventName:      event.name,
+        ticketTypeId:   String(ticket._id),
+        ticketTypeName: ticket.name,
+        priceInCents:   Math.round(ticket.price * 100),
+        quantity:       qty
+      });
+    }
+
+    // Multi-event discount
+    const uniqueEventCount = new Set(verifiedItems.map(i => i.eventId)).size;
 
     let discountMultiplier = 1.0;
     let discountLabel = '';
 
-    if (uniqueEventIds.length === 2) {
+    if (uniqueEventCount === 2) {
       discountMultiplier = 0.95;
       discountLabel = ' (5% Multi-Event Bundle Discount Applied)';
-    } else if (uniqueEventIds.length >= 3) {
+    } else if (uniqueEventCount >= 3) {
       discountMultiplier = 0.90;
       discountLabel = ' (10% Multi-Event Bundle Discount Applied)';
     }
 
-    const lineItems = cartItems.map((item) => {
-      const finalPriceInCents = Math.round(item.priceInCents * discountMultiplier);
-      return {
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: `${item.eventName} — ${item.ticketTypeName}`,
-            description: discountMultiplier < 1.0
-              ? `Ending social isolation.${discountLabel}`
-              : 'Standard Community Event Admission Pass',
-          },
-          unit_amount: finalPriceInCents,
+    const lineItems = verifiedItems.map((item) => ({
+      price_data: {
+        currency: 'usd',
+        product_data: {
+          name: `${item.eventName} — ${item.ticketTypeName}`,
+          description: discountMultiplier < 1.0
+            ? `Ending social isolation.${discountLabel}`
+            : 'Standard Community Event Admission Pass',
         },
-        quantity: item.quantity,
-      };
+        unit_amount: Math.round(item.priceInCents * discountMultiplier),
+      },
+      quantity: item.quantity,
+    }));
+
+    // One metadata entry per ticket so we never hit Stripe's 500-character limit
+    const metadata = {
+      itemCount:        String(verifiedItems.length),
+      isBundleCheckout: (discountMultiplier < 1.0).toString()
+    };
+    verifiedItems.forEach((item, idx) => {
+      metadata[`item_${idx}`] = JSON.stringify({
+        eventId:      item.eventId,
+        ticketTypeId: item.ticketTypeId,
+        ticketName:   item.ticketTypeName.slice(0, 80),
+        qty:          item.quantity,
+        pricePaid:    Math.round(item.priceInCents * discountMultiplier)
+      });
     });
 
     const session = await stripe.checkout.sessions.create({
@@ -998,16 +1079,7 @@ router.post('/checkout', async (req, res, next) => {
       line_items: lineItems,
       success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url:  `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events?cancelled=true`,
-      metadata: {
-        cartDetails: JSON.stringify(cartItems.map(i => ({
-          eventId:      i.eventId,
-          ticketTypeId: i.ticketTypeId,
-          ticketName:   i.ticketTypeName,
-          qty:          i.quantity,
-          pricePaid:    Math.round(i.priceInCents * discountMultiplier)
-        }))),
-        isBundleCheckout: (discountMultiplier < 1.0).toString()
-      }
+      metadata
     });
 
     return res.status(201).json({ url: session.url });
@@ -1248,11 +1320,20 @@ router.post('/webhook/stripe', async (req, res, next) => {
 
   if (stripeEvent.type === 'checkout.session.completed') {
     const session = stripeEvent.data.object;
+    const meta = session.metadata || {};
 
     try {
-      if (session.metadata && session.metadata.cartDetails) {
-        const purchasedCart = JSON.parse(session.metadata.cartDetails);
+      // New format: item_0, item_1, ... (older orders used a single cartDetails field)
+      let purchasedCart = [];
+      if (meta.itemCount) {
+        for (let i = 0; i < Number(meta.itemCount); i++) {
+          if (meta[`item_${i}`]) purchasedCart.push(JSON.parse(meta[`item_${i}`]));
+        }
+      } else if (meta.cartDetails) {
+        purchasedCart = JSON.parse(meta.cartDetails);
+      }
 
+      if (purchasedCart.length) {
         console.log(`Stripe Webhook: Syncing ${purchasedCart.length} ticket line(s)...`);
 
         for (const item of purchasedCart) {
@@ -1340,16 +1421,16 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
             { time: "9:00 PM", title: "Evening Closes",                  description: "Thank you for being here." }
           ],
           faqs: [
-            { question: "Where do I park?",                              answer: "Parking is free. Complimentary parking is directly behind the building, with overflow parking in the lot across the street." },
-            { question: "What is the dress code?",                       answer: "Casual — think put-together but relaxed. Come looking good and feeling comfortable." },
-            { question: "Who is this event for?",                        answer: "Grown folks 30 and up who want good company, real conversation, and a little more fun in their lives." },
-            { question: "What's included with my ticket?",               answer: "Your ticket includes hors d'oeuvres and one GFC signature mocktail crafted by Aromas Tea Bar." },
-            { question: "Is alcohol served at this event?",              answer: "No. This is a fully alcohol-free and smoke-free event." },
-            { question: "What are the GFC Conversation Cards?",          answer: "Signature cards designed to skip small talk and spark real, meaningful dialogue." },
-            { question: "Can I bring a guest or plus one?",              answer: "Yes — every attendee must purchase a ticket in advance. Spots are limited." },
-            { question: "Can I buy a ticket at the door?",               answer: "No. All sales close before the event date. Secure your spot in advance." },
-            { question: "What is your refund policy?",                   answer: "All ticket sales are final and non-refundable. You may transfer your ticket to another guest (30+)." },
-            { question: "What if I have a dietary restriction?",         answer: "Limited vegetarian and vegan options will be available. Please reach out in advance so we can accommodate you." }
+            { question: "Where do I park?",                     answer: "Parking is free. Complimentary parking is directly behind the building, with overflow parking in the lot across the street." },
+            { question: "What is the dress code?",              answer: "Casual — think put-together but relaxed. Come looking good and feeling comfortable." },
+            { question: "Who is this event for?",               answer: "Grown folks 30 and up who want good company, real conversation, and a little more fun in their lives." },
+            { question: "What's included with my ticket?",      answer: "Your ticket includes hors d'oeuvres and one GFC signature mocktail crafted by Aromas Tea Bar." },
+            { question: "Is alcohol served at this event?",     answer: "No. This is a fully alcohol-free and smoke-free event." },
+            { question: "What are the GFC Conversation Cards?", answer: "Signature cards designed to skip small talk and spark real, meaningful dialogue." },
+            { question: "Can I bring a guest or plus one?",     answer: "Yes — every attendee must purchase a ticket in advance. Spots are limited." },
+            { question: "Can I buy a ticket at the door?",      answer: "No. All sales close before the event date. Secure your spot in advance." },
+            { question: "What is your refund policy?",          answer: "All ticket sales are final and non-refundable. You may transfer your ticket to another guest (30+)." },
+            { question: "What if I have a dietary restriction?", answer: "Limited vegetarian and vegan options will be available. Please reach out in advance so we can accommodate you." }
           ]
         };
 
