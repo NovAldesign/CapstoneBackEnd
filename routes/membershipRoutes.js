@@ -158,8 +158,9 @@ router.post('/webhook', async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // ── A. Payment completed → member is active ──
-  if (event.type === 'checkout.session.completed') {
+  // ── A. Membership payment completed → member is active ──
+  // Ticket purchases send this same event, so skip anything that isn't a membership
+  if (event.type === 'checkout.session.completed' && event.data.object.metadata?.memberId) {
     const session = event.data.object;
 
     const { memberId, tier, firstName } = session.metadata || {};
