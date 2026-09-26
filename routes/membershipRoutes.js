@@ -115,6 +115,72 @@ router.post('/', async (req, res, next) => {
       `
     }).catch((err) => console.error('❌ Application notice email failed:', err.message));
 
+    // 4. Thank the applicant and give them a way back if they get interrupted.
+    //    The Stripe link works for 24 hours; the Membership page link always works.
+    const membershipPageUrl = `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/membership`;
+    const tierName = TIER_LABELS[savedMember.tier] || TIER_LABELS.Social;
+
+    resend.emails.send({
+      from: 'GFC <noreply@grownfolkscollective.com>',
+      to: savedMember.email,
+      subject: `${savedMember.firstName}, your spot in the Collective is waiting`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><title>Finish Joining the Collective</title></head>
+        <body style="margin: 0; padding: 0; background-color: #F8F9FA; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+          <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; margin: 20px auto; border-collapse: collapse; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+            <tr>
+              <td bgcolor="#002147" style="padding: 36px 20px; text-align: center;">
+                <h1 style="font-family: Georgia, serif; color: #C5A059; font-size: 2rem; margin: 0; font-weight: normal; letter-spacing: 2px;">The Collective</h1>
+                <p style="color: rgba(255,255,255,0.6); font-size: 0.75rem; letter-spacing: 4px; text-transform: uppercase; margin: 8px 0 0;">Grown Folks Collective</p>
+              </td>
+            </tr>
+            <tr><td height="4" bgcolor="#C5A059"></td></tr>
+            <tr>
+              <td style="padding: 44px 40px;">
+                <p style="font-size: 1.1rem; font-weight: 600; color: #002147; margin: 0 0 18px;">
+                  Hi ${escapeHtml(savedMember.firstName)},
+                </p>
+                <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin: 0 0 18px;">
+                  Thanks for applying to join the Grown Folks Collective as a <strong>${tierName}</strong>. We're so glad you're here.
+                </p>
+                <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin: 0 0 28px;">
+                  If you already finished checkout, you're all set. Your welcome email is on its way. If you got interrupted,
+                  you can pick up right where you left off:
+                </p>
+                <table border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 0 auto 18px;">
+                  <tr>
+                    <td bgcolor="#C5A059" style="border-radius: 2px;">
+                      <a href="${session.url}" style="display: inline-block; padding: 16px 34px; font-size: 0.8rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #002147; text-decoration: none;">
+                        Finish Joining
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="font-size: 0.8rem; line-height: 1.6; color: #888888; text-align: center; margin: 0 0 32px;">
+                  This link works for 24 hours. After that, you can join anytime at
+                  <a href="${membershipPageUrl}" style="color: #C5A059;">grownfolkscollective.com/membership</a>.
+                </p>
+                <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin: 0 0 32px;">
+                  Have a question first, or want to come to an event before joining? Just reply to this email. We'd love to hear from you.
+                </p>
+                <p style="font-size: 0.95rem; font-weight: 600; color: #002147; margin: 0 0 4px;">Warmly,</p>
+                <p style="font-family: Georgia, serif; font-size: 1.1rem; color: #C5A059; margin: 0;">The Grown Folks Collective Team</p>
+              </td>
+            </tr>
+            <tr>
+              <td bgcolor="#002147" style="padding: 28px 20px; text-align: center;">
+                <p style="color: rgba(255,255,255,0.4); font-size: 0.75rem; margin: 0; letter-spacing: 1px;">© 2026 Grown Folks Collective. All rights reserved.</p>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+      reply_to: TEAM_EMAIL,
+    }).catch((err) => console.error('❌ Applicant email failed:', err.message));
+
     // Send the Stripe URL straight back to the React client to initiate a smooth checkout redirect
     return res.status(201).json({ url: session.url, memberId: savedMember._id });
   } catch (error) {
