@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import Event from '../models/eventSchema.js';
 import Order from '../models/orderSchema.js';
 import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders.js';
+import { findPromoCode, promoAppliesToEvent, applyPromoToCents } from '../utilities/promoCodes.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -257,7 +258,13 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(500).json({ error: 'Stripe is not configured on the server.' });
     }
 
-    const { cartItems, customerEmail } = req.body;
+        const { cartItems, customerEmail, promoCode } = req.body;
+
+    // Optional ticket code (artist, referral, or discount code)
+    const promo = promoCode ? findPromoCode(promoCode) : null;
+    if (promoCode && !promo) {
+      return res.status(400).json({ error: "That code isn't valid or has expired. Remove it from your bag and try again." });
+    }
 
     if (!Array.isArray(cartItems) || cartItems.length === 0) {
       return res.status(400).json({ error: 'Your cart is completely empty.' });
@@ -314,16 +321,23 @@ router.post('/checkout', async (req, res, next) => {
         return res.status(400).json({ error: `Only ${remaining} "${ticket.name}" ticket${remaining === 1 ? '' : 's'} left for "${event.name}".` });
       }
 
+        const fullPriceInCents = Math.round(ticket.price * 100);
+      const codeApplies = promo ? promoAppliesToEvent(promo, event) : false;
+
       verifiedItems.push({
         eventId:        String(event._id),
         eventName:      event.name,
         ticketTypeId:   String(ticket._id),
         ticketTypeName: ticket.name,
-        priceInCents:   Math.round(ticket.price * 100),
-        quantity:       qty
+        priceInCents:   codeApplies ? applyPromoToCents(promo, fullPriceInCents) : fullPriceInCents,
+        quantity:       qty,
+        codeApplies
       });
     }
 
+    if (promo && !verifiedItems.some((i) => i.codeApplies)) {
+      return res.status(400).json({ error: `Code ${promo.code.toUpperCase()} doesn't apply to the events in your bag. Remove it and try again.` });
+    }
     // Multi-event discount
     const uniqueEventCount = new Set(verifiedItems.map(i => i.eventId)).size;
 
@@ -353,9 +367,10 @@ router.post('/checkout', async (req, res, next) => {
     }));
 
     // One metadata entry per ticket so we never hit Stripe's 500-character limit
-    const metadata = {
+      const metadata = {
       itemCount:        String(verifiedItems.length),
-      isBundleCheckout: (discountMultiplier < 1.0).toString()
+      isBundleCheckout: (discountMultiplier < 1.0).toString(),
+      promoCode:        promo ? promo.code.toUpperCase() : ''
     };
     verifiedItems.forEach((item, idx) => {
       metadata[`item_${idx}`] = JSON.stringify({
