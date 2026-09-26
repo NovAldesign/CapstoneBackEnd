@@ -28,6 +28,7 @@ const TicketOrderSchema = new mongoose.Schema(
     items: [TicketOrderItemSchema],
     totalPaidCents: { type: Number, default: 0 },
     discountLabel: { type: String, default: "" },
+    promoCode: { type: String, default: "", uppercase: true, trim: true },
 
     status: {
       type: String,
