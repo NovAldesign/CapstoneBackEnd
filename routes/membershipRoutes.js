@@ -166,7 +166,7 @@ router.post('/', async (req, res, next) => {
                   Have a question first, or want to come to an event before joining? Just reply to this email. We'd love to hear from you.
                 </p>
                 <p style="font-size: 0.95rem; font-weight: 600; color: #002147; margin: 0 0 4px;">Warmly,</p>
-                <p style="font-family: Georgia, serif; font-size: 1.1rem; color: #C5A059; margin: 0;">The Grown Folks Collective Team</p>
+                <p style="font-family: Georgia, serif; font-size: 1.1rem; color: #C5A059; margin: 0;">Grown Folks Collective Team</p>
               </td>
             </tr>
             <tr>
