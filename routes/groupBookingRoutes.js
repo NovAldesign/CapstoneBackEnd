@@ -7,7 +7,7 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const TEAM_EMAIL = "community@grownfolkscollective.com";
+const TEAM_EMAIL = "events@grownfolkscollective.com";
 
 // Keeps what people type from breaking the email layout
 const escapeHtml = (value = "") =>
