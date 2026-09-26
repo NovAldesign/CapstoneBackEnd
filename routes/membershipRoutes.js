@@ -143,7 +143,7 @@ router.post('/', async (req, res, next) => {
                   Hi ${escapeHtml(savedMember.firstName)},
                 </p>
                 <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin: 0 0 18px;">
-                  Thanks for applying to join the Grown Folks Collective as a <strong>${tierName}</strong>. We're so glad you're here.
+                  Thanks for applying to join Grown Folks Collective as a <strong>${tierName}</strong>. We're so glad you're here.
                 </p>
                 <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin: 0 0 28px;">
                   If you already finished checkout, you're all set. Your welcome email is on its way. If you got interrupted,
@@ -251,7 +251,7 @@ router.post('/webhook', async (req, res) => {
         await resend.emails.send({
           from: 'GFC <noreply@grownfolkscollective.com>',
           to: customerEmail,
-          subject: "You're In! Welcome to the Grown Folks Collective",
+          subject: "You're In! Welcome to Grown Folks Collective",
           html: `
             <!DOCTYPE html>
             <html>
@@ -320,7 +320,7 @@ router.post('/webhook', async (req, res) => {
                       Warmly,
                     </p>
                     <p style="font-family: Georgia, serif; font-size: 1.1rem; color: #C5A059; margin: 0;">
-                      The Grown Folks Collective Team
+                      Grown Folks Collective Team
                     </p>
                   </td>
                 </tr>
