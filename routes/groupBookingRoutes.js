@@ -56,9 +56,12 @@ router.post("/", async (req, res) => {
       eventId: clean(req.body.eventId, 60),
       eventTitle: clean(req.body.eventTitle, 200),
       groupSize,
+      isGuestOfHonor: Boolean(req.body.isGuestOfHonor),
+      guestOfHonor: req.body.isGuestOfHonor ? "" : clean(req.body.guestOfHonor, 120),
       songRequests: clean(req.body.songRequests, 1500),
       bringingCake: Boolean(req.body.bringingCake),
-      wantsMocktails: Boolean(req.body.wantsMocktails),
+      wantsSpecialMoment: Boolean(req.body.wantsSpecialMoment),
+      isSurprise: req.body.isGuestOfHonor ? false : Boolean(req.body.isSurprise),
       notes: clean(req.body.notes, 1500),
     });
 
@@ -70,13 +73,22 @@ router.post("/", async (req, res) => {
           ${row("Email", booking.email)}
           ${row("Phone", booking.phone)}
           ${row("Occasion", booking.occasion)}
+          ${row(
+            "Celebrating",
+            booking.isGuestOfHonor
+              ? `${booking.firstName} (their own celebration)`
+              : booking.guestOfHonor
+          )}
+          ${row("Surprise", booking.isSurprise ? "Yes 🤫 keep it hush" : "No")}
           ${row("Event", booking.eventTitle || "Not sure yet")}
           ${row("Group size", String(booking.groupSize))}
           ${row("Bringing a cake", booking.bringingCake ? "Yes" : "No")}
-          ${row("Mocktail special", booking.wantsMocktails ? "Interested" : "No")}
-          ${row("Songs / card requests", booking.songRequests)}
+          ${row("Wants help with a special moment", booking.wantsSpecialMoment ? "Yes" : "No")}
+          ${row("Categories / special requests", booking.songRequests)}
           ${row("Notes", booking.notes)}
         </table>`;
+
+      const surpriseTag = booking.isSurprise ? " (🤫 SURPRISE)" : "";
 
       // 1. Notify the team
       resend.emails
@@ -84,7 +96,7 @@ router.post("/", async (req, res) => {
           from: "GFC Group Bookings <noreply@grownfolkscollective.com>",
           to: TEAM_EMAIL,
           reply_to: booking.email,
-          subject: `🎉 Group request: ${booking.firstName} ${booking.lastName}, party of ${booking.groupSize}`,
+          subject: `🎉 Group request${surpriseTag}: ${booking.firstName} ${booking.lastName}, party of ${booking.groupSize}`,
           html: `
             <div style="font-family:sans-serif;padding:20px;color:#002147;">
               <h2 style="border-bottom:2px solid #C5A059;padding-bottom:10px;">New Group Request</h2>
