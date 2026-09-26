@@ -29,6 +29,7 @@ import travelRoutes from "./routes/travelRoutes.js";
 import articleRoutes from "./routes/articleRoutes.js"; // Added Article/Blog Routes
 import subscriberRoutes from "./routes/subscriberRoutes.js"; //Added Subscriber Routes
 import groupBookingRoutes from "./routes/groupBookingRoutes.js"; // Group & birthday bookings
+import promoCodeRoutes from "./routes/promoCodeRoutes.js"; // Ticket codes (artists, referrals, discounts)
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -114,6 +115,7 @@ app.use("/api/articles",     articleRoutes);    // Mounted Blog/Article API rout
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 app.use("/api/subscribers", subscriberRoutes);
 app.use("/api/group-bookings", groupBookingRoutes);
+app.use("/api/promo-codes", promoCodeRoutes);
 
 // -------------------------------------------------------
 // 8. STRIPE CANCEL REDIRECT LAYER
