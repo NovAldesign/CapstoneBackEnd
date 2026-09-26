@@ -17,7 +17,7 @@ export const PROMO_CODES = [
   { code: "GFCTEST", label: "Test code (tracking only)", type: "tracking", value: 0, events: [], active: true, expires: null },
 
   // Oct 30 showcase artists (tracking only, $15 per ticket sold, up to $75)
-  { code: "ARTISTA", label: "Showcase artist A, Oct 30", type: "tracking", value: 0, events: ["acoustic"], active: true, expires: "2026-10-30" },
+  { code: "ARIA", label: "Artist: Aria Alicia, Oct 30 showcase", type: "tracking", value: 0, events: ["acoustic"], active: true, expires: "2026-10-30" },
 ];
 
 const normalize = (code = "") => String(code).trim().toUpperCase().replace(/\s+/g, "");
