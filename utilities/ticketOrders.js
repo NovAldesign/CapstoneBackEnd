@@ -100,7 +100,8 @@ export const claimTicketOrder = async (session) => {
       buyerPhone: details.phone || "",
       totalPaidCents: session.amount_total || 0,
       discountLabel:
-        session.metadata?.isBundleCheckout === "true" ? "Multi-event bundle discount" : "",
+              session.metadata?.isBundleCheckout === "true" ? "Multi-event bundle discount" : "",
+      promoCode: session.metadata?.promoCode || "",
     });
   } catch (err) {
     if (err?.code === 11000) return null; // already processed
@@ -244,6 +245,7 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
         <tr><td style="padding:4px 14px 4px 0;color:#666;">Buyer</td><td><strong>${escapeHtml(order.buyerName || "—")}</strong></td></tr>
         <tr><td style="padding:4px 14px 4px 0;color:#666;">Email</td><td><strong>${escapeHtml(order.buyerEmail || "—")}</strong></td></tr>
         <tr><td style="padding:4px 14px 4px 0;color:#666;">Phone</td><td><strong>${escapeHtml(order.buyerPhone || "—")}</strong></td></tr>
+              <tr><td style="padding:4px 14px 4px 0;color:#666;">Code used</td><td><strong>${escapeHtml(order.promoCode || "None")}</strong></td></tr>
         <tr><td style="padding:4px 14px 4px 0;color:#666;">Confirmation</td><td><strong>${escapeHtml(order.confirmationCode)}</strong></td></tr>
         <tr><td style="padding:4px 14px 4px 0;color:#666;">Total paid</td><td><strong>${money(order.totalPaidCents)}</strong>${order.discountLabel ? ` (${escapeHtml(order.discountLabel)})` : ""}</td></tr>
       </table>
