@@ -66,7 +66,7 @@ router.get("/report", async (req, res) => {
   }
 
   try {
-    const orders = await TicketOrder.find({ promoCode: { $ne: "" }, status: "paid" })
+        const orders = await TicketOrder.find({ promoCode: { $nin: ["", null] }, status: "paid" })
       .sort({ createdAt: -1 })
       .lean();
 
