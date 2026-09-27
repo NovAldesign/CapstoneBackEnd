@@ -47,6 +47,8 @@ const allowedOrigins = [
   "https://www.grownfolkscollective.com",
   "http://localhost:5173",
   "http://localhost:3000",
+  // The backend's own pages (artist approve/decline buttons, reports)
+  "https://capstonebackend-production-87ed.up.railway.app",
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
