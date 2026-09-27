@@ -261,7 +261,7 @@ router.post('/checkout', async (req, res, next) => {
         const { cartItems, customerEmail, promoCode } = req.body;
 
     // Optional ticket code (artist, referral, or discount code)
-    const promo = promoCode ? findPromoCode(promoCode) : null;
+       const promo = promoCode ? await findPromoCode(promoCode) : null;
     if (promoCode && !promo) {
       return res.status(400).json({ error: "That code isn't valid or has expired. Remove it from your bag and try again." });
     }
