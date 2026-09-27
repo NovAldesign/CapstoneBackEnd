@@ -3,10 +3,8 @@ import mongoose from "mongoose";
 import Event from "../models/eventSchema.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import {
-  PROMO_CODES,
+  allPromoCodes,
   findPromoCode,
-  promoAppliesToEvent,
-  describePromo,
 } from "../utilities/promoCodes.js";
 
 const router = express.Router();
@@ -27,8 +25,8 @@ const money = (cents = 0) => `$${(Number(cents) / 100).toFixed(2)}`;
    Tells the bag whether a code works for the events in it.
 ------------------------------------------------------- */
 router.post("/validate", async (req, res) => {
-  try {
-    const promo = findPromoCode(req.body.code);
+  try {   
+     const promo = await findPromoCode(req.body.code);
     if (!promo) {
       return res.status(404).json({ valid: false, error: "That code isn't valid or has expired." });
     }
@@ -73,7 +71,7 @@ router.get("/report", async (req, res) => {
       .lean();
 
     const byCode = new Map();
-    for (const p of PROMO_CODES) {
+        for (const p of await allPromoCodes()) {
       byCode.set(p.code.toUpperCase(), { label: p.label, active: p.active, orders: [] });
     }
     for (const o of orders) {
