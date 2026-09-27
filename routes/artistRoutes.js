@@ -403,10 +403,12 @@ router.post("/:id/review", async (req, res) => {
     const { application, action } = found;
     const name = escapeHtml(application.artistName);
 
-    if (action === "decline") {
+      if (action === "decline") {
       application.status = "declined";
       application.reviewedAt = new Date();
       await application.save();
+      // Turn off the ticket code we made for them (if any)
+      await PromoCode.updateMany({ artistId: application._id }, { active: false });
       return res.send(reviewPage(`${name} was declined`, "<p>They won't appear on the website.</p>"));
     }
 
