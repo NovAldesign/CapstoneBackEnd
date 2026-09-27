@@ -41,8 +41,12 @@ const artistApplicationSchema = new mongoose.Schema(
       enum: ["pending", "approved", "declined"],
       default: "pending",
     },
-    reviewToken: { type: String, required: true },
+     reviewToken: { type: String, required: true },
     reviewedAt: { type: Date, default: null },
+
+    // Set when you approve
+    promoCode: { type: String, default: "", trim: true },
+    bookingEmailSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
