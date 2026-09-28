@@ -34,6 +34,11 @@ const subscriberSchema = new mongoose.Schema({
       message: "Please provide a valid phone number to receive text messages.",
     },
   },
+  // Proof of text-message consent (required by the TCPA)
+  smsConsentAt: { type: Date, default: null },
+  smsConsentText: { type: String, default: "" },
+  smsConsentVersion: { type: String, default: "" },
+  source: { type: String, default: "", trim: true }, // where they signed up (footer, blog:slug)
   createdAt: {
     type: Date,
     default: Date.now,
