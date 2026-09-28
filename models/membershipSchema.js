@@ -16,6 +16,10 @@ const membershipSchema = new mongoose.Schema({
   stripeCustomerId: { type: String, default: "" },
   stripeSubscriptionId: { type: String, default: "" },
   paidAt: { type: Date, default: null },
+  // Agreement to auto-renewal, Terms, and Participation Waiver
+  autoRenewAgreed: { type: Boolean, default: false },
+  termsVersion: { type: String, default: "" },
+  termsAcceptedAt: { type: Date, default: null },
   submittedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
