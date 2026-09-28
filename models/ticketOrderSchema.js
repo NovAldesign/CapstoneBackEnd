@@ -30,6 +30,11 @@ const TicketOrderSchema = new mongoose.Schema(
     discountLabel: { type: String, default: "" },
     promoCode: { type: String, default: "", uppercase: true, trim: true },
 
+    // Checkout agreement (Terms, Refund Policy, Participation Waiver)
+    termsAccepted: { type: Boolean, default: false },
+    termsVersion: { type: String, default: "" },
+    termsAcceptedAt: { type: Date, default: null },
+
     status: {
       type: String,
       enum: ["paid", "refunded", "cancelled"],
