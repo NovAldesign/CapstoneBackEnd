@@ -31,6 +31,7 @@ const artistApplicationSchema = new mongoose.Schema(
 
     // Agreement
     termsAccepted: { type: Boolean, required: true },
+    agreementVersion: { type: String, default: "" }, // Performer Agreement version they signed
     featureConsent: { type: Boolean, default: false },
     signatureName: { type: String, required: true, trim: true },
     signedAt: { type: Date, default: Date.now },
