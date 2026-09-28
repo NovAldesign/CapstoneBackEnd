@@ -258,7 +258,7 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(500).json({ error: 'Stripe is not configured on the server.' });
     }
 
-        const { cartItems, customerEmail, promoCode } = req.body;
+        const { cartItems, customerEmail, promoCode, agreedToTerms, termsVersion } = req.body;
 
     // Optional ticket code (artist, referral, or discount code)
        const promo = promoCode ? await findPromoCode(promoCode) : null;
@@ -370,7 +370,11 @@ router.post('/checkout', async (req, res, next) => {
       const metadata = {
       itemCount:        String(verifiedItems.length),
       isBundleCheckout: (discountMultiplier < 1.0).toString(),
-      promoCode:        promo ? promo.code.toUpperCase() : ''
+      promoCode:        promo ? promo.code.toUpperCase() : '',
+      // Proof the buyer checked "I agree to the Terms, Refund Policy, and Waiver"
+      termsAccepted:    agreedToTerms === true ? 'yes' : 'no',
+      termsVersion:     String(termsVersion || '').slice(0, 40),
+      termsAcceptedAt:  agreedToTerms === true ? new Date().toISOString() : ''
     };
     verifiedItems.forEach((item, idx) => {
       metadata[`item_${idx}`] = JSON.stringify({
