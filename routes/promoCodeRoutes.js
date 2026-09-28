@@ -5,6 +5,8 @@ import TicketOrder from "../models/ticketOrderSchema.js";
 import {
   allPromoCodes,
   findPromoCode,
+  promoAppliesToEvent,
+  describePromo,
 } from "../utilities/promoCodes.js";
 
 const router = express.Router();
@@ -48,6 +50,8 @@ router.post("/validate", async (req, res) => {
       description: describePromo(promo),
       appliesToAllEvents: !promo.events || promo.events.length === 0,
       eligibleEventIds,
+      oncePerOrder: Boolean(promo.oncePerOrder),
+      firstTimeOnly: Boolean(promo.firstTimeOnly),
     });
   } catch (err) {
     console.error("Promo validate error:", err.message);

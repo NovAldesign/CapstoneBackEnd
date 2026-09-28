@@ -5,7 +5,7 @@ import Stripe from 'stripe';
 import Event from '../models/eventSchema.js';
 import Order from '../models/orderSchema.js';
 import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders.js';
-import { findPromoCode, promoAppliesToEvent, applyPromoToCents } from '../utilities/promoCodes.js';
+import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore } from '../utilities/promoCodes.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -266,6 +266,17 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(400).json({ error: "That code isn't valid or has expired. Remove it from your bag and try again." });
     }
 
+    // First-visit codes (like ACE5) need an email we can check
+    const cleanEmail = String(customerEmail || '').trim().toLowerCase();
+    if (promo?.firstTimeOnly) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({ error: `Enter your email in the bag to use ${promo.code.toUpperCase()}.` });
+      }
+      if (await hasBoughtBefore(cleanEmail)) {
+        return res.status(400).json({ error: `${promo.code.toUpperCase()} is for your first GFC event, and it looks like you've been with us before. Welcome back! Remove the code to continue.` });
+      }
+    }
+
     if (!Array.isArray(cartItems) || cartItems.length === 0) {
       return res.status(400).json({ error: 'Your cart is completely empty.' });
     }
@@ -329,10 +340,29 @@ router.post('/checkout', async (req, res, next) => {
         eventName:      event.name,
         ticketTypeId:   String(ticket._id),
         ticketTypeName: ticket.name,
-        priceInCents:   codeApplies ? applyPromoToCents(promo, fullPriceInCents) : fullPriceInCents,
+        priceInCents:   fullPriceInCents,
         quantity:       qty,
         codeApplies
       });
+    }
+
+    // Apply the code: to every eligible ticket, or to just one ticket for "once per order" codes
+    if (promo) {
+      const onceItem = promo.oncePerOrder ? verifiedItems.find((i) => i.codeApplies) : null;
+      if (onceItem && onceItem.quantity > 1) {
+        // split off one discounted ticket; the rest stay full price
+        onceItem.quantity -= 1;
+        verifiedItems.splice(verifiedItems.indexOf(onceItem), 0, {
+          ...onceItem, quantity: 1, priceInCents: applyPromoToCents(promo, onceItem.priceInCents)
+        });
+        onceItem.codeApplies = false;
+      } else if (onceItem) {
+        onceItem.priceInCents = applyPromoToCents(promo, onceItem.priceInCents);
+      } else {
+        verifiedItems.forEach((i) => {
+          if (i.codeApplies) i.priceInCents = applyPromoToCents(promo, i.priceInCents);
+        });
+      }
     }
 
     if (promo && !verifiedItems.some((i) => i.codeApplies)) {
@@ -389,7 +419,7 @@ router.post('/checkout', async (req, res, next) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
-      customer_email: customerEmail || undefined,
+      customer_email: cleanEmail || undefined,
       phone_number_collection: { enabled: true },
       line_items: lineItems,
       success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?session_id={CHECKOUT_SESSION_ID}`,
