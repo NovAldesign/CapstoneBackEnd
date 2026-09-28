@@ -1,4 +1,6 @@
 import PromoCode from "../models/promoCodeSchema.js";
+import TicketOrder from "../models/ticketOrderSchema.js";
+import Order from "../models/orderSchema.js";
 
 // =======================================================
 // GFC TICKET CODES
@@ -14,9 +16,14 @@ import PromoCode from "../models/promoCodeSchema.js";
 //             leave [] to work for every event
 //   active:   true / false (turn a code off without deleting it)
 //   expires:  "YYYY-MM-DD" (last day it works) or null
+//   oncePerOrder:  true = discount comes off ONE ticket, not every ticket
+//   firstTimeOnly: true = only works for an email that has never bought a GFC ticket
 // =======================================================
 
 export const PROMO_CODES = [
+  // Business card: $5 off your first GFC event (one ticket, first-time buyers only)
+  { code: "ACE5", label: "Business card: $5 off first event", type: "amount", value: 5, events: [], active: true, expires: null, oncePerOrder: true, firstTimeOnly: true },
+
   { code: "GFCTEST", label: "Test code (tracking only)", type: "tracking", value: 0, events: [], active: true, expires: null },
 
   // Oct 30 showcase artists (tracking only, $15 per ticket sold, up to $75)
@@ -80,11 +87,25 @@ export const applyPromoToCents = (promo, cents) => {
   return cents; // tracking codes don't change the price
 };
 
+// Has this email bought a GFC ticket before? (website orders, old and new)
+export const hasBoughtBefore = async (email = "") => {
+  const clean = String(email).trim().toLowerCase();
+  if (!clean) return false;
+  const [newOrder, oldOrder] = await Promise.all([
+    TicketOrder.exists({ buyerEmail: clean, status: "paid" }),
+    Order.exists({ buyerEmail: clean, paymentStatus: "succeeded" }),
+  ]);
+  return Boolean(newOrder || oldOrder);
+};
+
 // Short description for the bag, e.g. "10% off" or "$5 off each ticket"
 export const describePromo = (promo) => {
   if (!promo) return "";
   if (promo.type === "percent") return `${promo.value}% off`;
-  if (promo.type === "amount") return `$${promo.value} off each ticket`;
+  if (promo.type === "amount") {
+    if (promo.firstTimeOnly) return `$${promo.value} off your first GFC event`;
+    return promo.oncePerOrder ? `$${promo.value} off one ticket` : `$${promo.value} off each ticket`;
+  }
   return "Code applied";
 };
 
