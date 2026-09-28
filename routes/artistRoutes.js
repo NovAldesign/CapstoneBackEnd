@@ -32,6 +32,7 @@ export const ARTIST_TERMS = [
   "Bring all my own equipment (mic, amp, instrument, cables).",
   "Arrive 1 hour before doors for setup and sound check.",
   "Tag @grownfolkscollective when I promote the show.",
+  "Follow the Performer Agreement, Code of Conduct, and Participation Waiver, including the showcase rules and release.",
 ];
 
 const escapeHtml = (value = "") =>
@@ -126,6 +127,7 @@ router.post("/apply", async (req, res) => {
       payoutMethod: ["Zelle", "Cash App"].includes(b.payoutMethod) ? b.payoutMethod : "",
       payoutHandle: clean(b.payoutHandle, 120),
       termsAccepted: true,
+      agreementVersion: clean(b.agreementVersion, 40),
       featureConsent: Boolean(b.featureConsent),
       signatureName,
       signedAt: new Date(),
