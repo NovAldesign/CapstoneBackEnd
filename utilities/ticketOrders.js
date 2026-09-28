@@ -102,6 +102,9 @@ export const claimTicketOrder = async (session) => {
       discountLabel:
               session.metadata?.isBundleCheckout === "true" ? "Multi-event bundle discount" : "",
       promoCode: session.metadata?.promoCode || "",
+      termsAccepted: session.metadata?.termsAccepted === "yes",
+      termsVersion: session.metadata?.termsVersion || "",
+      termsAcceptedAt: session.metadata?.termsAcceptedAt ? new Date(session.metadata.termsAcceptedAt) : null,
     });
   } catch (err) {
     if (err?.code === 11000) return null; // already processed
