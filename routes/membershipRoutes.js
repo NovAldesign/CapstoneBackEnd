@@ -46,6 +46,10 @@ router.post('/', async (req, res, next) => {
       tier: req.body.tier,
       connectionGoals: req.body.connectionGoals,
       submittedAt: new Date(),
+      // Proof they agreed to monthly auto-renewal + Terms/Waiver
+      autoRenewAgreed: req.body.agreedToAutoRenew === true,
+      termsVersion: String(req.body.termsVersion || '').slice(0, 40),
+      termsAcceptedAt: req.body.agreedToAutoRenew === true ? new Date() : null,
     };
 
     // 1. If this email already applied, reuse that record instead of failing
