@@ -18,11 +18,17 @@ import Order from "../models/orderSchema.js";
 //   expires:  "YYYY-MM-DD" (last day it works) or null
 //   oncePerOrder:  true = discount comes off ONE ticket, not every ticket
 //   firstTimeOnly: true = only works for an email that has never bought a GFC ticket
+//   collectEmail:  true = the bag asks for the buyer's email (needed for free tickets)
+//   maxUses:       how many paid/free orders can use the code in total (e.g. 2)
+//   eventsOnOrBefore: "YYYY-MM-DD" = only works for events on or before this date
 // =======================================================
 
 export const PROMO_CODES = [
   // Business card: $5 off your first GFC event (one ticket, first-time buyers only)
   { code: "ACE5", label: "Business card: $5 off first event", type: "amount", value: 5, events: [], active: true, expires: null, oncePerOrder: true, firstTimeOnly: true },
+
+  // Partner comps: 1 free ticket per order, 2 redemptions total, Oct 10 or Oct 17 events only
+  { code: "GFC100", label: "Partner comp: 1 free ticket (2 uses)", type: "percent", value: 100, events: [], active: true, expires: "2026-10-17", oncePerOrder: true, collectEmail: true, maxUses: 2, eventsOnOrBefore: "2026-10-17" },
 
   { code: "GFCTEST", label: "Test code (tracking only)", type: "tracking", value: 0, events: [], active: true, expires: null },
 
@@ -60,6 +66,10 @@ export const findPromoCode = async (code) => {
 // Does this code work for this event?
 export const promoAppliesToEvent = (promo, event) => {
   if (!promo) return false;
+  if (promo.eventsOnOrBefore && event?.date) {
+    const lastDay = new Date(`${promo.eventsOnOrBefore}T23:59:59-05:00`);
+    if (new Date(event.date) > lastDay) return false;
+  }
   const id = String(event?._id || "");
   const hasIds = Array.isArray(promo.eventIds) && promo.eventIds.length > 0;
   const hasWords = Array.isArray(promo.events) && promo.events.length > 0;
@@ -87,6 +97,16 @@ export const applyPromoToCents = (promo, cents) => {
   return cents; // tracking codes don't change the price
 };
 
+// How many more orders can use this code (Infinity when there's no limit)
+export const promoUsesLeft = async (promo) => {
+  if (!promo?.maxUses) return Infinity;
+  const used = await TicketOrder.countDocuments({ promoCode: normalizeCode(promo.code), status: "paid" });
+  return Math.max(0, Number(promo.maxUses) - used);
+};
+
+// Does the bag need the buyer's email for this code?
+export const promoNeedsEmail = (promo) => Boolean(promo?.firstTimeOnly || promo?.collectEmail);
+
 // Has this email bought a GFC ticket before? (website orders, old and new)
 export const hasBoughtBefore = async (email = "") => {
   const clean = String(email).trim().toLowerCase();
@@ -101,7 +121,8 @@ export const hasBoughtBefore = async (email = "") => {
 // Short description for the bag, e.g. "10% off" or "$5 off each ticket"
 export const describePromo = (promo) => {
   if (!promo) return "";
-  if (promo.type === "percent") return `${promo.value}% off`;
+  if (promo.type === "percent" && Number(promo.value) >= 100 && promo.oncePerOrder) return "1 free ticket";
+  if (promo.type === "percent") return promo.oncePerOrder ? `${promo.value}% off one ticket` : `${promo.value}% off`;
   if (promo.type === "amount") {
     if (promo.firstTimeOnly) return `$${promo.value} off your first GFC event`;
     return promo.oncePerOrder ? `$${promo.value} off one ticket` : `$${promo.value} off each ticket`;
