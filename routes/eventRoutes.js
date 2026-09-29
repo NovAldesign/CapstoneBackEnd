@@ -5,7 +5,8 @@ import Stripe from 'stripe';
 import Event from '../models/eventSchema.js';
 import Order from '../models/orderSchema.js';
 import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders.js';
-import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore } from '../utilities/promoCodes.js';
+import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail } from '../utilities/promoCodes.js';
+import crypto from 'crypto';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -244,6 +245,20 @@ router.get('/external/:eventId', async (req, res, next) => {
   }
 });
 
+/* Count sold tickets (paid Stripe orders and free orders) */
+const syncTicketCounts = async (purchasedCart) => {
+  for (const item of purchasedCart) {
+    const updatedEvent = await Event.findOneAndUpdate(
+      { _id: item.eventId, "ticketTypes._id": item.ticketTypeId },
+      // websiteSold is tracked separately so Eventbrite syncs don't erase it
+      { $inc: { "ticketTypes.$.sold": Number(item.qty), "ticketTypes.$.websiteSold": Number(item.qty) } },
+      { new: true }
+    );
+    if (updatedEvent) console.log(`Ticket synced: "${item.ticketName}" +${item.qty}`);
+    else console.warn(`Inventory mismatch: could not find ticket ID ${item.ticketTypeId}`);
+  }
+};
+
 /* -------------------------------------------------------
    POST /api/events/checkout
    Public — Multi-ticket/Multi-event bundle checkout
@@ -266,12 +281,17 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(400).json({ error: "That code isn't valid or has expired. Remove it from your bag and try again." });
     }
 
-    // First-visit codes (like ACE5) need an email we can check
+    // Limited codes (like GFC100) stop once they're used up
+    if (promo && (await promoUsesLeft(promo)) <= 0) {
+      return res.status(400).json({ error: `Code ${promo.code.toUpperCase()} has already been fully redeemed. Remove it from your bag and try again.` });
+    }
+
+    // Some codes need an email: first-visit codes (ACE5) and free-ticket codes (GFC100)
     const cleanEmail = String(customerEmail || '').trim().toLowerCase();
+    if (promoNeedsEmail(promo) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: `Enter your email in the bag to use ${promo.code.toUpperCase()}.` });
+    }
     if (promo?.firstTimeOnly) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-        return res.status(400).json({ error: `Enter your email in the bag to use ${promo.code.toUpperCase()}.` });
-      }
       if (await hasBoughtBefore(cleanEmail)) {
         return res.status(400).json({ error: `${promo.code.toUpperCase()} is for your first GFC event, and it looks like you've been with us before. Welcome back! Remove the code to continue.` });
       }
@@ -415,6 +435,24 @@ router.post('/checkout', async (req, res, next) => {
         pricePaid:    Math.round(item.priceInCents * discountMultiplier)
       });
     });
+
+    // A fully free order (e.g. GFC100 on one ticket) skips Stripe: save it and send the ticket email now
+    const orderTotalCents = lineItems.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0);
+    if (orderTotalCents === 0) {
+      const freeSession = {
+        id: `free_${crypto.randomUUID()}`,
+        payment_intent: '',
+        customer_details: { email: cleanEmail, name: '' },
+        customer_email: cleanEmail,
+        amount_total: 0,
+        metadata,
+      };
+      const purchasedCart = verifiedItems.map((_, idx) => JSON.parse(metadata[`item_${idx}`]));
+      const order = await claimTicketOrder(freeSession);
+      await syncTicketCounts(purchasedCart);
+      try { await completeTicketOrder(order, purchasedCart); } catch (e) { console.error('Free order emails failed:', e.message); }
+      return res.status(201).json({ url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?free=1` });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -688,28 +726,7 @@ router.post('/webhook/stripe', async (req, res, next) => {
         }
         console.log(`Stripe Webhook: Syncing ${purchasedCart.length} ticket line(s)...`);
 
-        for (const item of purchasedCart) {
-          const updatedEvent = await Event.findOneAndUpdate(
-            {
-              _id: item.eventId,
-              "ticketTypes._id": item.ticketTypeId
-            },
-            {
-              // websiteSold is tracked separately so Eventbrite syncs don't erase it
-              $inc: {
-                "ticketTypes.$.sold":        Number(item.qty),
-                "ticketTypes.$.websiteSold": Number(item.qty)
-              }
-            },
-            { new: true }
-          );
-
-          if (updatedEvent) {
-            console.log(`Ticket synced: "${item.ticketName}" +${item.qty}`);
-          } else {
-            console.warn(`Inventory mismatch: could not find ticket ID ${item.ticketTypeId}`);
-          }
-        }
+        await syncTicketCounts(purchasedCart);
 
         // Guest list + ticket email to the buyer + sale alert to the team
         try {
