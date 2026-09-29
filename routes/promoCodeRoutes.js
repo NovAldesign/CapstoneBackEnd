@@ -7,6 +7,8 @@ import {
   findPromoCode,
   promoAppliesToEvent,
   describePromo,
+  promoUsesLeft,
+  promoNeedsEmail,
 } from "../utilities/promoCodes.js";
 
 const router = express.Router();
@@ -32,6 +34,9 @@ router.post("/validate", async (req, res) => {
     if (!promo) {
       return res.status(404).json({ valid: false, error: "That code isn't valid or has expired." });
     }
+    if ((await promoUsesLeft(promo)) <= 0) {
+      return res.status(410).json({ valid: false, error: "That code has already been fully redeemed." });
+    }
 
     const ids = (Array.isArray(req.body.eventIds) ? req.body.eventIds : [])
       .map(String)
@@ -48,10 +53,11 @@ router.post("/validate", async (req, res) => {
       type: promo.type,
       value: Number(promo.value) || 0,
       description: describePromo(promo),
-      appliesToAllEvents: !promo.events || promo.events.length === 0,
+      appliesToAllEvents: (!promo.events || promo.events.length === 0) && !promo.eventsOnOrBefore,
       eligibleEventIds,
       oncePerOrder: Boolean(promo.oncePerOrder),
       firstTimeOnly: Boolean(promo.firstTimeOnly),
+      needsEmail: promoNeedsEmail(promo),
     });
   } catch (err) {
     console.error("Promo validate error:", err.message);
