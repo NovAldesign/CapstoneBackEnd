@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import mongoose from "mongoose";
+import multer from "multer";
 import { Resend } from "resend";
 import ArtistApplication from "../models/artistApplicationSchema.js";
 import Event from "../models/eventSchema.js";
@@ -162,6 +163,7 @@ router.post("/apply", async (req, res) => {
                 ${row("Genre", escapeHtml(application.genres))}
                 ${row("Hometown", escapeHtml(application.hometown))}
                 ${row("Bio", escapeHtml(application.bio))}
+                ${row("Photo", application.headshotUrl ? "✓ Uploaded" : `⚠️ None. <a href="${base}/photo?token=${application.reviewToken}" style="color:#9A7630;">Add a photo</a>`)}
                 ${row("Performances", linksHtml)}
                 ${row("Instagram", application.instagram ? `@${escapeHtml(application.instagram)}` : "")}
                 ${row("TikTok", application.tiktok ? `@${escapeHtml(application.tiktok)}` : "")}
@@ -268,6 +270,47 @@ const findForReview = async (req) => {
   return { application, action };
 };
 
+// Private "add or replace photo" page, same token as the review links
+const photoLink = (application) =>
+  `/api/artists/${application._id}/photo?token=${application.reviewToken}`;
+const photoStatus = (application) =>
+  application.headshotUrl
+    ? `<p><img src="${escapeHtml(application.headshotUrl)}" alt="" style="width:90px;height:90px;object-fit:cover;border-radius:8px;vertical-align:middle;margin-right:10px;"/>Photo on file. <a href="${photoLink(application)}">Replace photo</a></p>`
+    : `<p>⚠️ No photo on file. <a href="${photoLink(application)}">Add a photo</a></p>`;
+
+const findForPhoto = async (req) => {
+  const token = String(req.query.token || "");
+  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !token) return null;
+  const application = await ArtistApplication.findById(req.params.id);
+  if (!application || token !== application.reviewToken) return null;
+  return application;
+};
+
+// Upload a photo to our Cloudinary account from the server
+const uploadToCloudinary = async (file) => {
+  const timestamp = Math.round(Date.now() / 1000);
+  const signature = crypto
+    .createHash("sha1")
+    .update(`folder=${UPLOAD_FOLDER}&timestamp=${timestamp}` + API_SECRET)
+    .digest("hex");
+  const form = new FormData();
+  form.append("file", new Blob([file.buffer], { type: file.mimetype }), file.originalname || "photo.jpg");
+  form.append("api_key", API_KEY);
+  form.append("timestamp", String(timestamp));
+  form.append("folder", UPLOAD_FOLDER);
+  form.append("signature", signature);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: form });
+  const result = await res.json();
+  if (!result.secure_url) throw new Error(result.error?.message || "Cloudinary didn't accept the photo.");
+  return result.secure_url;
+};
+
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, /^image\//.test(file.mimetype)),
+}).single("photo");
+
 // Upcoming music events, plus the one the artist picked
 const showcaseOptions = async (application) => {
   const upcoming = await Event.find({ status: "published", date: { $gte: new Date() } })
@@ -335,7 +378,7 @@ const sendBookingEmail = async (application, event, code) => {
 
         ${h3("Promotion")}
         <ul>
-          ${featured ? `<li>Your photo and bio are now featured in <strong>Meet the Artists</strong> on the <a href="${eventPageLink(event._id)}" style="color:#9A7630;">event page</a>.</li>` : ""}
+          ${featured ? `<li>Your ${application.headshotUrl ? "photo and bio are" : "bio is"} now featured in <strong>Meet the Artists</strong> on the <a href="${eventPageLink(event._id)}" style="color:#9A7630;">event page</a>.</li>` : ""}
           <li>We'll promote you on our socials and email list. When you post about the show, please tag <strong>@grownfolkscollective</strong>.</li>
         </ul>
 
@@ -375,6 +418,7 @@ router.get("/:id/review", async (req, res) => {
 
     return res.send(reviewPage(`Approve ${name}`,
       `<p>Status: <strong>${escapeHtml(application.status)}</strong>${application.promoCode ? ` · Code: <code>${escapeHtml(application.promoCode)}</code>` : ""}</p>
+       ${photoStatus(application)}
        <form method="POST">
          <label for="eventId">Showcase</label>
          <select id="eventId" name="eventId">
@@ -489,6 +533,7 @@ router.post("/:id/review", async (req, res) => {
        <p>${application.featureConsent
          ? `✓ They now show in <strong>Meet the Artists</strong>. <a href="${eventPageLink(event._id)}">View the event page →</a>`
          : "They won't show in Meet the Artists (they didn't give permission to be featured)."}</p>
+       ${photoStatus(application)}
        <p style="color:#666;font-size:14px;">Their sales will show under <code>${escapeHtml(code)}</code> in your code report.</p>`));
   } catch (err) {
     console.error("Artist approve error:", err.message);
@@ -500,6 +545,65 @@ router.post("/:id/review", async (req, res) => {
    GET /api/artists/public?eventId=...  — Public
    Approved artists for "Meet the Artists" (public info only)
 ------------------------------------------------------- */
+/* -------------------------------------------------------
+   /api/artists/:id/photo?token=...  — Team only (token)
+   GET  = page to add or replace the artist's photo
+   POST = uploads it and updates Meet the Artists
+------------------------------------------------------- */
+const photoForm = (application, note = "") => {
+  const name = escapeHtml(application.artistName);
+  const current = application.headshotUrl
+    ? `<p><img src="${escapeHtml(application.headshotUrl)}" alt="" style="width:160px;height:160px;object-fit:cover;border-radius:8px;"/></p><p class="hint">Current photo. Uploading a new one replaces it.</p>`
+    : `<p>No photo on file yet.</p>`;
+  return reviewPage(`Photo for ${name}`,
+    `${note}${current}
+     <form method="POST" enctype="multipart/form-data">
+       <label for="photo">Choose a photo</label>
+       <input id="photo" name="photo" type="file" accept="image/*" required/>
+       <p class="hint">JPG or PNG, under 10 MB. A square-ish, well-lit photo of their face works best.</p>
+       <button type="submit" style="background:#002147;">Save photo</button>
+     </form>`);
+};
+
+router.get("/:id/photo", async (req, res) => {
+  try {
+    const application = await findForPhoto(req);
+    if (!application) return res.status(404).send(reviewPage("Invalid link", "<p>This photo link isn't valid.</p>"));
+    return res.send(photoForm(application));
+  } catch (err) {
+    console.error("Artist photo page error:", err.message);
+    return res.status(500).send(reviewPage("Something went wrong", "<p>Please try the link again.</p>"));
+  }
+});
+
+router.post("/:id/photo", (req, res) => {
+  photoUpload(req, res, async (uploadErr) => {
+    try {
+      const application = await findForPhoto(req);
+      if (!application) return res.status(404).send(reviewPage("Invalid link", "<p>This photo link isn't valid.</p>"));
+      const fail = (msg) => res.status(400).send(photoForm(application, `<div class="box">⚠️ ${escapeHtml(msg)}</div>`));
+
+      if (uploadErr) return fail(uploadErr.code === "LIMIT_FILE_SIZE" ? "That photo is over 10 MB. Please pick a smaller one." : "The upload didn't go through. Please try again.");
+      if (!req.file) return fail("Please choose an image file (JPG or PNG).");
+      if (!CLOUD_NAME || !API_KEY || !API_SECRET) return fail("Photo uploads aren't set up on the server (Cloudinary settings are missing in Railway).");
+
+      application.headshotUrl = await uploadToCloudinary(req.file);
+      await application.save();
+
+      const live = application.status === "approved" && application.featureConsent && application.eventId;
+      return res.send(reviewPage(`✅ Photo saved`,
+        `<p><img src="${escapeHtml(application.headshotUrl)}" alt="" style="width:200px;height:200px;object-fit:cover;border-radius:8px;"/></p>
+         <p>${live
+           ? `It's now live in <strong>Meet the Artists</strong>. <a href="${eventPageLink(application.eventId)}">View the event page →</a>`
+           : "It will show in Meet the Artists once they're approved."}</p>`));
+    } catch (err) {
+      console.error("Artist photo upload error:", err.message);
+      return res.status(500).send(photoForm({ artistName: "this artist", headshotUrl: "" },
+        `<div class="box">⚠️ ${escapeHtml(err.message || "Upload failed.")}</div>`));
+    }
+  });
+});
+
 router.get("/public", async (req, res) => {
   try {
     const eventId = String(req.query.eventId || "");
