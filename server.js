@@ -32,6 +32,7 @@ import groupBookingRoutes from "./routes/groupBookingRoutes.js"; // Group & birt
 import promoCodeRoutes from "./routes/promoCodeRoutes.js"; // Ticket codes (artists, referrals, discounts)
 import artistRoutes from "./routes/artistRoutes.js"; // Artist applications + Meet the Artists
 import hostingRoutes from "./routes/hostingRoutes.js"; // Play. Sip. Toast. hosting requests (/host page)
+import reviewRoutes from "./routes/reviewRoutes.js"; // Guest reviews for the home page
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -122,6 +123,7 @@ app.use("/api/group-bookings", groupBookingRoutes);
 app.use("/api/promo-codes", promoCodeRoutes);
 app.use("/api/artists", artistRoutes);
 app.use("/api/hosting", hostingRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 // -------------------------------------------------------
 // 8. STRIPE CANCEL REDIRECT LAYER
