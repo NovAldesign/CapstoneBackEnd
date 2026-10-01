@@ -64,38 +64,7 @@ router.get("/stripe-check", async (req, res, next) => {
     }
 });
 
-/**
- * --- SYSTEM SEEDING ---
- * URL: GET /api/seed-all
- */
-router.get("/seed-all", async (req, res, next) => {
-    try {
-        console.log("🌱 System-wide seeding initiated...");
-
-        // Clear existing data
-        await Promise.all([
-            Membership.deleteMany({}),
-            Admin.deleteMany({}),
-            Partnership.deleteMany({})
-        ]);
-
-        // Insert new data
-        await Membership.insertMany(membershipData);
-        
-        // Using Promise.all for faster execution on Railway
-        await Promise.all([
-            ...partnershipData.map(p => new Partnership(p).save()),
-            ...adminData.map(a => new Admin(a).save())
-        ]);
-
-        console.log("✅ GFC Database fully seeded!");
-        res.status(201).json({ 
-            message: "GFC Database fully seeded",
-            count: membershipData.length 
-        });
-    } catch (err) {
-        next(err);
-    }
-});
+// The old /api/seed-all route was removed: it wiped every member, admin and
+// partner and replaced them with sample data, and anyone could open it.
 
 export default router;
