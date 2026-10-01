@@ -60,6 +60,10 @@ const adminSchema = new mongoose.Schema(
             }
         },
 
+        // Password reset (forgot password email link)
+        resetTokenHash: { type: String, select: false },
+        resetTokenExpires: { type: Date, select: false },
+
         lastAction: { type: String },
         lastLoginIp: { type: String },
         createdAt: { type: Date, default: Date.now }
@@ -85,6 +89,3 @@ adminSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 export default mongoose.model("Admin", adminSchema);
-
-
-
