@@ -1,5 +1,6 @@
 import express from 'express';
 import Article from '../models/articleSchema.js'; // Explicit .js extension required in ES Modules
+import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -24,8 +25,8 @@ router.get('/:slug', async (req, res) => {
   }
 });
 
-// POST a new article
-router.post('/', async (req, res) => {
+// POST a new article  — Admin only (was open to anyone)
+router.post('/', protect, restrictTo('admin'), async (req, res) => {
   const { title, slug, content, excerpt, category, imageUrl } = req.body;
 
   const article = new Article({
