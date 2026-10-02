@@ -5,6 +5,7 @@ import { Resend } from "resend";
 import SelectApplication from "../models/selectApplicationSchema.js";
 import SelectRound from "../models/selectRoundSchema.js";
 import SelectNotify from "../models/selectNotifySchema.js";
+import Subscriber from "../models/subscriberSchema.js";
 import { protect, restrictTo } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -109,7 +110,18 @@ router.post("/notify", notifyLimiter, async (req, res) => {
       return res.status(400).json({ error: "Please add your first name and a valid email." });
     }
 
+    const wantsNewsletter = req.body.newsletter === true;
     const existing = await SelectNotify.findOne({ email });
+
+    // Checked the box: also add them to the regular events newsletter (skip if already subscribed)
+    if (wantsNewsletter) {
+      await Subscriber.updateOne(
+        { email },
+        { $setOnInsert: { fullName: firstName, email, source: "select-notify" } },
+        { upsert: true }
+      ).catch((err) => console.error("Select newsletter opt-in error:", err));
+    }
+
     await SelectNotify.findOneAndUpdate(
       { email },
       {
@@ -118,6 +130,7 @@ router.post("/notify", notifyLimiter, async (req, res) => {
         ...(phone ? { phone } : {}),
         ...(gender ? { gender } : {}),
         textOk: Boolean(phone) && req.body.textOk === true,
+        ...(wantsNewsletter ? { newsletter: true } : {}),
         ...(existing ? {} : { source: clean(req.body.source, 60) }),
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
