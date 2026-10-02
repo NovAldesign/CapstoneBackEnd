@@ -24,6 +24,7 @@ import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import eventRoutes from "./routes/eventRoutes.js"; // Handles our new /external/:eventId route automatically
 import partnershipRoutes from "./routes/partnershipRoutes.js";
+import discountPartnerRoutes from "./routes/discountPartnerRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import travelRoutes from "./routes/travelRoutes.js";
 import articleRoutes from "./routes/articleRoutes.js"; // Added Article/Blog Routes
@@ -126,6 +127,7 @@ app.use("/api/artists", artistRoutes);
 app.use("/api/hosting", hostingRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/select", selectRoutes);
+app.use("/api/discount-partners", discountPartnerRoutes);
 
 // -------------------------------------------------------
 // 8. STRIPE CANCEL REDIRECT LAYER
