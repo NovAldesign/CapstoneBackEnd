@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
 import { Resend } from "resend";
 import SelectApplication from "../models/selectApplicationSchema.js";
+import SelectRound from "../models/selectRoundSchema.js";
+import SelectNotify from "../models/selectNotifySchema.js";
 import { protect, restrictTo } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -58,11 +60,112 @@ const applyLimiter = rateLimit({
 });
 
 /* -------------------------------------------------------
+   THE DOORS: is the application window open?
+------------------------------------------------------- */
+const currentRound = () => SelectRound.findOne().sort({ updatedAt: -1 }).lean();
+
+const roundState = (round, now = new Date()) => {
+  if (!round || !round.opensAt || !round.closesAt) return "soon";
+  if (now < new Date(round.opensAt)) return "soon";
+  if (now <= new Date(round.closesAt)) return "open";
+  return "closed";
+};
+
+// GET /api/select/status  — Public
+router.get("/status", async (req, res) => {
+  try {
+    const round = await currentRound();
+    res.json({
+      state: roundState(round),
+      opensAt: round?.opensAt || null,
+      closesAt: round?.closesAt || null,
+      eventDate: round?.eventDate || null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load status." });
+  }
+});
+
+/* -------------------------------------------------------
+   POST /api/select/notify  — Public
+   Body: { firstName, email, phone, gender, textOk, source }
+------------------------------------------------------- */
+const notifyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { error: "Too many sign-ups from this device. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.post("/notify", notifyLimiter, async (req, res) => {
+  try {
+    if (req.body.website) return res.status(201).json({ ok: true }); // bots
+    const firstName = clean(req.body.firstName, 40);
+    const email = clean(req.body.email, 120).toLowerCase();
+    const phone = clean(req.body.phone, 30);
+    const gender = ["man", "woman"].includes(req.body.gender) ? req.body.gender : "";
+    if (!firstName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Please add your first name and a valid email." });
+    }
+
+    const existing = await SelectNotify.findOne({ email });
+    await SelectNotify.findOneAndUpdate(
+      { email },
+      {
+        firstName,
+        email,
+        ...(phone ? { phone } : {}),
+        ...(gender ? { gender } : {}),
+        textOk: Boolean(phone) && req.body.textOk === true,
+        ...(existing ? {} : { source: clean(req.body.source, 60) }),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    if (resend && !existing) {
+      const round = await currentRound();
+      const opens = round?.opensAt && roundState(round) === "soon"
+        ? new Date(round.opensAt).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "America/New_York" })
+        : "";
+      resend.emails
+        .send({
+          from: "GFC Select™ <events@grownfolkscollective.com>",
+          to: email,
+          subject: "You're on the list for GFC Select™",
+          html: `<div style="background:#070B16;padding:32px 12px;font-family:Georgia,'Times New Roman',serif">
+            <div style="max-width:540px;margin:0 auto;background:#F4F1EA;border:1px solid #C5A059;padding:38px 32px;color:#0E2340">
+              <p style="margin:0;text-align:center;letter-spacing:.3em;font-size:11px;color:#8A6A2A;font-family:Arial,sans-serif">GFC SELECT™</p>
+              <div style="width:60px;height:1px;background:#C5A059;margin:14px auto 26px"></div>
+              <p style="margin:0 0 16px;line-height:1.7">${escapeHtml(firstName)}, you're on the list.</p>
+              <p style="margin:0 0 16px;line-height:1.7">${opens ? `The doors open <strong>${escapeHtml(opens)}</strong>, and they stay open for two weeks only.` : "When the doors open, they stay open for two weeks only."} You'll be among the first to know.</p>
+              <p style="margin:0 0 16px;line-height:1.7">Forty seats. Twenty men, twenty women. One unforgettable night.</p>
+              <p style="margin:24px 0 0;font-style:italic">— Vaughn</p>
+              <p style="margin:4px 0 0;font-size:13px;color:#555;font-family:Arial,sans-serif">Grown Folks™ Collective · (270) 380-8896</p>
+            </div>
+          </div>`,
+        })
+        .catch((err) => console.error("Select notify email error:", err));
+    }
+
+    res.status(201).json({ ok: true, already: Boolean(existing) });
+  } catch (err) {
+    console.error("Select notify error:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+/* -------------------------------------------------------
    POST /api/select/apply  — Public (/select page)
 ------------------------------------------------------- */
 router.post("/apply", applyLimiter, async (req, res) => {
   try {
     if (req.body.website) return res.status(201).json({ ok: true }); // bots
+
+    const round = await currentRound();
+    if (roundState(round) !== "open") {
+      return res.status(403).json({ error: "The doors are closed right now. Join the list to hear when they open." });
+    }
 
     const b = req.body;
     const firstName = clean(b.firstName, 40);
@@ -337,6 +440,107 @@ router.post("/admin/email", admin, async (req, res) => {
     res.json({ ok: failed.length === 0, sent, failed });
   } catch (err) {
     console.error("Select email error:", err);
+    res.status(500).json({ error: "Could not send the emails." });
+  }
+});
+
+/* -------------------------------------------------------
+   ADMIN: the doors (round dates) and the notify list
+------------------------------------------------------- */
+// GET /api/select/admin/round
+router.get("/admin/round", admin, async (req, res) => {
+  try {
+    const round = await currentRound();
+    res.json({ round: round || null, state: roundState(round) });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load the round." });
+  }
+});
+
+// PUT /api/select/admin/round  Body: { name, opensAt, closesAt, eventDate }
+router.put("/admin/round", admin, async (req, res) => {
+  try {
+    const toDate = (v) => (v ? new Date(v) : null);
+    const opensAt = toDate(req.body.opensAt);
+    const closesAt = toDate(req.body.closesAt);
+    const eventDate = toDate(req.body.eventDate);
+    if ([opensAt, closesAt, eventDate].some((d) => d && Number.isNaN(d.getTime()))) {
+      return res.status(400).json({ error: "One of those dates isn't valid." });
+    }
+    if (opensAt && closesAt && closesAt <= opensAt) {
+      return res.status(400).json({ error: "The doors have to close after they open." });
+    }
+    const existing = await SelectRound.findOne().sort({ updatedAt: -1 });
+    const data = { name: clean(req.body.name, 80), opensAt, closesAt, eventDate };
+    const round = existing
+      ? await SelectRound.findByIdAndUpdate(existing._id, data, { new: true })
+      : await SelectRound.create(data);
+    res.json({ round, state: roundState(round) });
+  } catch (err) {
+    res.status(500).json({ error: "Could not save the round." });
+  }
+});
+
+// GET /api/select/admin/notify  — the notify list
+router.get("/admin/notify", admin, async (req, res) => {
+  try {
+    const list = await SelectNotify.find().sort({ createdAt: -1 }).lean();
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: "Could not load the notify list." });
+  }
+});
+
+// POST /api/select/admin/notify/email  Body: { subject, message, test }
+// Emails EVERYONE on the notify list (e.g. "The doors are open").
+router.post("/admin/notify/email", admin, async (req, res) => {
+  try {
+    if (!resend) return res.status(500).json({ error: "Email isn't set up (RESEND_API_KEY missing)." });
+    const subject = clean(req.body.subject, 200);
+    const message = String(req.body.message || "").trim().slice(0, 5000);
+    if (!subject || !message) return res.status(400).json({ error: "Add a subject and a message." });
+
+    const list = await SelectNotify.find().select("firstName email").lean();
+    if (!list.length) return res.status(400).json({ error: "The notify list is empty." });
+
+    if (req.body.test === true) {
+      await resend.emails.send({
+        from: "GFC Select™ <events@grownfolkscollective.com>",
+        to: TEAM_EMAIL,
+        subject: `[TEST] ${fillName(subject, list[0].firstName)}`,
+        html: selectEmailHtml(list[0].firstName, message),
+      });
+      return res.json({ ok: true, test: true, sentTo: TEAM_EMAIL });
+    }
+
+    let sent = 0;
+    const failed = [];
+    for (let i = 0; i < list.length; i += 100) {
+      const chunk = list.slice(i, i + 100);
+      try {
+        const { error } = await resend.batch.send(
+          chunk.map((p) => ({
+            from: "GFC Select™ <events@grownfolkscollective.com>",
+            to: p.email,
+            reply_to: "community@grownfolkscollective.com",
+            subject: fillName(subject, p.firstName),
+            html: selectEmailHtml(p.firstName, message),
+          }))
+        );
+        if (error) throw new Error(error.message || "Batch failed");
+        sent += chunk.length;
+        await SelectNotify.updateMany(
+          { _id: { $in: chunk.map((p) => p._id) } },
+          { $push: { emailLog: { subject, sentAt: new Date() } } }
+        );
+      } catch (err) {
+        console.error("Select notify bulk email error:", err);
+        failed.push(...chunk.map((p) => p.email));
+      }
+    }
+    res.json({ ok: failed.length === 0, sent, failed });
+  } catch (err) {
+    console.error("Select notify email error:", err);
     res.status(500).json({ error: "Could not send the emails." });
   }
 });
