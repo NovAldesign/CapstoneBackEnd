@@ -232,4 +232,113 @@ router.patch("/admin/:id", admin, async (req, res) => {
   }
 });
 
+/* -------------------------------------------------------
+   POST /api/select/admin/bulk-status  — Admin
+   Body: { ids: [...], status }
+   Approve / waitlist / decline several applications at once.
+------------------------------------------------------- */
+router.post("/admin/bulk-status", admin, async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).filter((id) =>
+      mongoose.Types.ObjectId.isValid(id)
+    );
+    if (!ids.length) return res.status(400).json({ error: "Choose at least one application." });
+    if (!STATUSES.includes(req.body.status)) return res.status(400).json({ error: "Unknown status." });
+    const result = await SelectApplication.updateMany(
+      { _id: { $in: ids } },
+      { status: req.body.status }
+    );
+    res.json({ ok: true, updated: result.modifiedCount });
+  } catch (err) {
+    res.status(500).json({ error: "Could not update those applications." });
+  }
+});
+
+/* -------------------------------------------------------
+   POST /api/select/admin/email  — Admin
+   Body: { ids: [...], subject, message, test: true|false }
+   Sends one personal email to each chosen applicant.
+   {firstName} in the subject or message becomes their first name.
+   test: true sends a single preview to the team inbox instead.
+------------------------------------------------------- */
+const fillName = (text, firstName) => String(text).replace(/\{firstName\}/g, firstName);
+
+const selectEmailHtml = (firstName, message) => {
+  const paragraphs = escapeHtml(fillName(message, firstName))
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 16px;line-height:1.7">${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  return `<div style="background:#070B16;padding:32px 12px;font-family:Georgia,'Times New Roman',serif">
+    <div style="max-width:560px;margin:0 auto;background:#F4F1EA;border:1px solid #C5A059;padding:40px 34px;color:#0E2340">
+      <p style="margin:0;text-align:center;letter-spacing:.3em;font-size:11px;color:#8A6A2A;font-family:Arial,sans-serif">GFC SELECT™</p>
+      <div style="width:60px;height:1px;background:#C5A059;margin:14px auto 28px"></div>
+      <div style="font-size:16px">${paragraphs}</div>
+      <p style="margin:28px 0 0;font-style:italic">— Vaughn</p>
+      <p style="margin:4px 0 0;font-size:13px;color:#555;font-family:Arial,sans-serif">Grown Folks™ Collective · (270) 380-8896</p>
+    </div>
+    <p style="max-width:560px;margin:16px auto 0;text-align:center;font-size:11px;color:#8b93a7;font-family:Arial,sans-serif">You're receiving this because you requested an invitation to GFC Select™. Please keep the details private.</p>
+  </div>`;
+};
+
+router.post("/admin/email", admin, async (req, res) => {
+  try {
+    if (!resend) return res.status(500).json({ error: "Email isn't set up (RESEND_API_KEY missing)." });
+
+    const subject = clean(req.body.subject, 200);
+    const message = String(req.body.message || "").trim().slice(0, 5000);
+    if (!subject || !message) return res.status(400).json({ error: "Add a subject and a message." });
+
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).filter((id) =>
+      mongoose.Types.ObjectId.isValid(id)
+    );
+    if (!ids.length) return res.status(400).json({ error: "Choose at least one person." });
+
+    const apps = await SelectApplication.find({ _id: { $in: ids } }).select("firstName email").lean();
+    if (!apps.length) return res.status(404).json({ error: "No matching applications." });
+
+    // Test: one preview to the team inbox, using the first person's name
+    if (req.body.test === true) {
+      await resend.emails.send({
+        from: "GFC Select™ <events@grownfolkscollective.com>",
+        to: TEAM_EMAIL,
+        subject: `[TEST] ${fillName(subject, apps[0].firstName)}`,
+        html: selectEmailHtml(apps[0].firstName, message),
+      });
+      return res.json({ ok: true, test: true, sentTo: TEAM_EMAIL });
+    }
+
+    // Real send: one personal email each, in batches of 100
+    let sent = 0;
+    const failed = [];
+    for (let i = 0; i < apps.length; i += 100) {
+      const chunk = apps.slice(i, i + 100);
+      try {
+        const { error } = await resend.batch.send(
+          chunk.map((a) => ({
+            from: "GFC Select™ <events@grownfolkscollective.com>",
+            to: a.email,
+            reply_to: "community@grownfolkscollective.com",
+            subject: fillName(subject, a.firstName),
+            html: selectEmailHtml(a.firstName, message),
+          }))
+        );
+        if (error) throw new Error(error.message || "Batch failed");
+        sent += chunk.length;
+        await SelectApplication.updateMany(
+          { _id: { $in: chunk.map((a) => a._id) } },
+          { $push: { emailLog: { subject, sentAt: new Date() } } }
+        );
+      } catch (err) {
+        console.error("Select bulk email error:", err);
+        failed.push(...chunk.map((a) => a.email));
+      }
+    }
+
+    res.json({ ok: failed.length === 0, sent, failed });
+  } catch (err) {
+    console.error("Select email error:", err);
+    res.status(500).json({ error: "Could not send the emails." });
+  }
+});
+
 export default router;

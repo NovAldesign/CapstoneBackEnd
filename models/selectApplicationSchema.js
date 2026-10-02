@@ -51,6 +51,15 @@ const selectApplicationSchema = new mongoose.Schema(
     },
     notes: { type: String, default: "", maxlength: 2000 }, // private team notes
     source: { type: String, default: "", trim: true, maxlength: 60 }, // ?src= tracking
+
+    // Emails sent from the dashboard (e.g. "You've been selected")
+    emailLog: [
+      {
+        _id: false,
+        subject: { type: String, maxlength: 200 },
+        sentAt: { type: Date },
+      },
+    ],
   },
   { timestamps: true }
 );
