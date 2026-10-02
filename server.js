@@ -33,6 +33,7 @@ import promoCodeRoutes from "./routes/promoCodeRoutes.js"; // Ticket codes (arti
 import artistRoutes from "./routes/artistRoutes.js"; // Artist applications + Meet the Artists
 import hostingRoutes from "./routes/hostingRoutes.js"; // Play. Sip. Toast. hosting requests (/host page)
 import reviewRoutes from "./routes/reviewRoutes.js"; // Guest reviews for the home page
+import selectRoutes from "./routes/selectRoutes.js"; // GFC Select applications
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -124,6 +125,7 @@ app.use("/api/promo-codes", promoCodeRoutes);
 app.use("/api/artists", artistRoutes);
 app.use("/api/hosting", hostingRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/select", selectRoutes);
 
 // -------------------------------------------------------
 // 8. STRIPE CANCEL REDIRECT LAYER
