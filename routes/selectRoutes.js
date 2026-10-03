@@ -10,7 +10,7 @@ import Subscriber from "../models/subscriberSchema.js";
 import { protect, restrictTo } from "../middleware/authMiddleware.js";
 import {
   doorsLine, notifyConfirm, applyConfirm, nominationInvite, nominatorThanks, friendInvite,
-} from "../utils/selectEmails.js";
+} from "../utilities/selectEmails.js";
 
 const router = express.Router();
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -120,7 +120,7 @@ const doorsNow = async () => {
   return doorsLine(state, opens);
 };
 
-// Send one of the copy objects from utils/selectEmails.js (never blocks the request)
+// Send one of the copy objects from utilities/selectEmails.js (never blocks the request)
 const sendSelectEmail = (to, firstName, { subject, message, button, footer }) => {
   if (!resend) return;
   resend.emails
