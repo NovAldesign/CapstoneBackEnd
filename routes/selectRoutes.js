@@ -44,11 +44,11 @@ const STATUSES = ["new", "selected", "waitlist", "not_this_time"];
 const VALUE_KEYS = ["faith", "family", "friends", "finances", "career", "health", "adventure", "growth", "fun", "community"];
 const LOVE_KEYS = ["words", "time", "service", "gifts", "touch"];
 const CONNECT_KEYS = {
-  social: ["room", "few", "mix"],
+  social: ["room", "few", "warm", "quiet", "mix"],
   conflict: ["now", "later", "show"],
   pace: ["slow", "steady", "fast"],
   roles: ["lead", "partner", "flex"],
-  weekend: ["out", "home", "mix"],
+  weekend: ["out", "home", "recharge", "mix"],
 };
 const KIDS_HAVE = ["yes", "no"];
 const KIDS_WANT = ["yes", "no", "open", "done"];
