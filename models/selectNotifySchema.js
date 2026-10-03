@@ -8,6 +8,9 @@ const selectNotifySchema = new mongoose.Schema(
     phone: { type: String, default: "", trim: true, maxlength: 30 },
     gender: { type: String, enum: ["man", "woman", ""], default: "" },
     textOk: { type: Boolean, default: false }, // agreed to text reminders
+    friendName: { type: String, default: "", trim: true, maxlength: 80 }, // applying with a friend
+    friendEmail: { type: String, default: "", lowercase: true, trim: true, maxlength: 120 },
+    friendGender: { type: String, default: "" }, // man | woman
     newsletter: { type: Boolean, default: false }, // also joined the regular events newsletter
     source: { type: String, default: "", trim: true, maxlength: 60 },
     emailLog: [

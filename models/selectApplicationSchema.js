@@ -16,6 +16,9 @@ const selectApplicationSchema = new mongoose.Schema(
     instagram: { type: String, default: "", trim: true, maxlength: 60 },
     heardFrom: { type: String, default: "", trim: true, maxlength: 80 },
     referredBy: { type: String, default: "", trim: true, maxlength: 80 },
+    friendName: { type: String, default: "", trim: true, maxlength: 80 }, // applying with a friend
+    friendEmail: { type: String, default: "", lowercase: true, trim: true, maxlength: 120 },
+    friendGender: { type: String, default: "" }, // man | woman
 
     // Dating
     lookingFor: { type: String, default: "", trim: true, maxlength: 80 },
@@ -24,6 +27,35 @@ const selectApplicationSchema = new mongoose.Schema(
     firstDate: { type: String, default: "", trim: true, maxlength: 800 },
     matters: { type: String, default: "", trim: true, maxlength: 800 },
     learnLater: { type: String, default: "", trim: true, maxlength: 800 },
+    hasKids: { type: String, default: "" }, // yes | no
+    wantsKids: { type: String, default: "" }, // yes | no | open | done
+    ageMin: { type: Number, default: null }, // ages they'd like to meet
+    ageMax: { type: Number, default: null },
+    nightGoal: { type: String, default: "" }, // one | few | friends | out
+
+    // What you value: each rated 1 (not important) to 5 (essential)
+    values: {
+      faith: { type: Number, min: 1, max: 5 },
+      family: { type: Number, min: 1, max: 5 },
+      friends: { type: Number, min: 1, max: 5 },
+      finances: { type: Number, min: 1, max: 5 },
+      career: { type: Number, min: 1, max: 5 },
+      health: { type: Number, min: 1, max: 5 },
+      adventure: { type: Number, min: 1, max: 5 },
+      growth: { type: Number, min: 1, max: 5 },
+      fun: { type: Number, min: 1, max: 5 },
+      community: { type: Number, min: 1, max: 5 },
+    },
+    valuesWhy: { type: String, default: "", trim: true, maxlength: 800 },
+
+    // How you connect
+    social: { type: String, default: "" }, // room | few | mix
+    conflict: { type: String, default: "" }, // now | later | show
+    pace: { type: String, default: "" }, // slow | steady | fast
+    roles: { type: String, default: "" }, // lead | partner | flex
+    weekend: { type: String, default: "" }, // out | home | mix
+    giveLove: [{ type: String }], // 2 of: words, time, service, gifts, touch
+    receiveLove: [{ type: String }],
 
     // Bingo card prompts: [{ prompt, answer }]
     bingo: [
