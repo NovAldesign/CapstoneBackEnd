@@ -1,9 +1,12 @@
 import mongoose from "mongoose";
 
-// Artists applying to perform at GFC showcases.
+// Artists (and hosts) applying for GFC showcases.
 // Approved artists (with permission) appear in "Meet the Artists" on the event page.
 const artistApplicationSchema = new mongoose.Schema(
   {
+    // "artist" = singer or musician · "host" = runs the night (MC)
+    role: { type: String, enum: ["artist", "host"], default: "artist" },
+
     // Private contact info
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
