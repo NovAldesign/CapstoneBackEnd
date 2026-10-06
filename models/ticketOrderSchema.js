@@ -29,6 +29,8 @@ const TicketOrderSchema = new mongoose.Schema(
     totalPaidCents: { type: Number, default: 0 },
     discountLabel: { type: String, default: "" },
     promoCode: { type: String, default: "", uppercase: true, trim: true },
+    // Where the buyer came from on the website (the ?src= tag, e.g. threads-m, ig, email)
+    source: { type: String, default: "", trim: true },
 
     // Checkout agreement (Terms, Refund Policy, Participation Waiver)
     termsAccepted: { type: Boolean, default: false },

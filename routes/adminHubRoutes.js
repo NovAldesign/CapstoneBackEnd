@@ -15,6 +15,8 @@ import Subscriber from "../models/subscriberSchema.js";
 import Membership from "../models/membershipSchema.js";
 import { PROMO_CODES, normalizeCode, describePromo, isLive } from "../utilities/promoCodes.js";
 import { approveApplication, declineApplication } from "./artistRoutes.js";
+import GuestEntry, { GUEST_SOURCES } from "../models/guestEntrySchema.js";
+import { buildGuestList, setCheckIn, doorKey, clearEventbriteCache } from "../utilities/guestList.js";
 
 // ── Admin dashboard API: /api/admin-hub (admin login required, see server.js) ──
 const router = express.Router();
@@ -502,6 +504,198 @@ router.get("/subscribers", async (req, res) => {
   } catch (err) {
     console.error("Admin subscribers error:", err.message);
     res.status(500).json({ error: "Couldn't load subscribers." });
+  }
+});
+
+/* =======================================================
+   GUEST LISTS + CHECK-IN (every ticket, from every place it was sold)
+======================================================= */
+const SITE = process.env.FRONTEND_URL || "https://www.grownfolkscollective.com";
+const doorUrl = (eventId) => `${SITE.replace(/\/$/, "")}/checkin/${eventId}?key=${doorKey(String(eventId))}`;
+
+// Events for the Guest lists tab
+router.get("/events", async (req, res) => {
+  try {
+    const past = req.query.when === "past";
+    const now = new Date();
+    const dayAgo = new Date(Date.now() - DAY);
+    const query = past
+      ? { status: { $ne: "cancelled" }, date: { $lt: dayAgo, $gte: new Date(Date.now() - 180 * DAY) } }
+      : { status: { $ne: "cancelled" }, date: { $gte: dayAgo } };
+    const events = await Event.find(query).sort({ date: past ? -1 : 1 }).limit(60)
+      .select("name date capacity ticketTypes status eventbriteId location").lean();
+    res.json({
+      now,
+      events: events.map((e) => ({
+        id: String(e._id),
+        name: e.name,
+        date: e.date,
+        status: e.status,
+        sold: soldFor(e),
+        capacity: capacityFor(e),
+        eventbrite: Boolean(e.eventbriteId),
+        location: e.location?.name || "",
+      })),
+    });
+  } catch (err) {
+    console.error("Admin events error:", err.message);
+    res.status(500).json({ error: "Couldn't load events." });
+  }
+});
+
+const findEvent = async (id) =>
+  isId(id) ? Event.findById(id).select("name date endDate location eventbriteId capacity ticketTypes").lean() : null;
+
+router.get("/events/:id/guests", async (req, res) => {
+  try {
+    const event = await findEvent(req.params.id);
+    if (!event) return res.status(404).json({ error: "Event not found." });
+    if (req.query.refresh) clearEventbriteCache(event.eventbriteId);
+    const list = await buildGuestList(event);
+    res.json({
+      event: { id: String(event._id), name: event.name, date: event.date, location: event.location?.name || "", capacity: capacityFor(event) },
+      ...list,
+      doorUrl: doorUrl(event._id),
+      sources: GUEST_SOURCES,
+    });
+  } catch (err) {
+    console.error("Admin guest list error:", err.message);
+    res.status(500).json({ error: "Couldn't load the guest list." });
+  }
+});
+
+router.post("/events/:id/checkin", async (req, res) => {
+  try {
+    const event = await findEvent(req.params.id);
+    if (!event) return res.status(404).json({ error: "Event not found." });
+    const key = String(req.body?.key || "").slice(0, 120);
+    if (!/^(web|eb|guest):/.test(key)) return res.status(400).json({ error: "Unknown guest." });
+    const saved = await setCheckIn(event._id, key, req.body?.count, "admin");
+    res.json({ ok: true, key, count: saved.count, lastAt: saved.lastAt });
+  } catch (err) {
+    console.error("Admin check-in error:", err.message);
+    res.status(500).json({ error: "Check-in didn't save." });
+  }
+});
+
+// Add a guest by hand (Posh, Eventnoire, comps, walk-ins)
+router.post("/events/:id/guests", async (req, res) => {
+  try {
+    const event = await findEvent(req.params.id);
+    if (!event) return res.status(404).json({ error: "Event not found." });
+    const b = req.body || {};
+    const name = clean(b.name, 120);
+    if (!name) return res.status(400).json({ error: "Add their name." });
+    const guest = await GuestEntry.create({
+      eventId: String(event._id),
+      name,
+      email: clean(b.email, 120).toLowerCase(),
+      phone: clean(b.phone, 30),
+      quantity: Math.min(50, Math.max(1, Math.floor(Number(b.quantity) || 1))),
+      source: GUEST_SOURCES.includes(b.source) ? b.source : "other",
+      amountPaidCents: Math.max(0, Math.round((Number(b.amountPaid) || 0) * 100)),
+      notes: clean(b.notes, 500),
+      addedBy: "admin",
+    });
+    res.status(201).json({ ok: true, id: String(guest._id) });
+  } catch (err) {
+    console.error("Admin add guest error:", err.message);
+    res.status(500).json({ error: "Couldn't add the guest." });
+  }
+});
+
+router.delete("/events/:id/guests/:guestId", async (req, res) => {
+  try {
+    if (!isId(req.params.guestId)) return res.status(404).json({ error: "Guest not found." });
+    await GuestEntry.deleteOne({ _id: req.params.guestId, eventId: String(req.params.id) });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Admin delete guest error:", err.message);
+    res.status(500).json({ error: "Couldn't remove the guest." });
+  }
+});
+
+/* =======================================================
+   REPORTS: tickets, revenue, attendance and where tickets came from
+======================================================= */
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Run a few at a time so Eventbrite isn't flooded
+const mapLimit = async (items, limit, fn) => {
+  const out = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      out[idx] = await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+};
+
+router.get("/reports", async (req, res) => {
+  try {
+    const from = YMD_RE.test(req.query.from || "") ? new Date(`${req.query.from}T00:00:00-04:00`) : new Date(Date.now() - 30 * DAY);
+    const to = YMD_RE.test(req.query.to || "") ? new Date(`${req.query.to}T23:59:59-04:00`) : new Date();
+    const events = await Event.find({ status: { $ne: "cancelled" }, date: { $gte: from, $lte: to } })
+      .sort({ date: 1 }).limit(60)
+      .select("name date capacity ticketTypes eventbriteId").lean();
+
+    const now = Date.now();
+    const rows = await mapLimit(events, 4, async (e) => {
+      const list = await buildGuestList(e);
+      const past = new Date(e.date).getTime() < now;
+      return {
+        id: String(e._id),
+        name: e.name,
+        date: e.date,
+        past,
+        capacity: capacityFor(e),
+        tickets: list.totals.tickets,
+        checkedIn: list.totals.checkedIn,
+        paidCents: list.totals.paidCents,
+        bySource: list.totals.bySource,
+        eventbriteError: list.eventbrite.ok ? "" : list.eventbrite.error,
+        websiteTags: list.guests.filter((g) => g.source === "website")
+          .reduce((m, g) => { const t = g.sourceDetail || "direct"; m[t] = (m[t] || 0) + g.tickets; return m; }, {}),
+        codes: list.guests.filter((g) => g.code)
+          .reduce((m, g) => { m[g.code] = (m[g.code] || 0) + g.tickets; return m; }, {}),
+      };
+    });
+
+    const sum = (fn) => rows.reduce((n, r) => n + fn(r), 0);
+    const merge = (key) => rows.reduce((m, r) => {
+      Object.entries(r[key]).forEach(([k, v]) => {
+        if (typeof v === "number") m[k] = (m[k] || 0) + v;
+        else {
+          const t = (m[k] ||= { tickets: 0, checkedIn: 0, paidCents: 0, orders: 0 });
+          Object.keys(t).forEach((f) => { t[f] += v[f] || 0; });
+        }
+      });
+      return m;
+    }, {});
+
+    // Attendance only counts past events where you used check-in
+    const tracked = rows.filter((r) => r.past && r.checkedIn > 0);
+    res.json({
+      from, to,
+      totals: {
+        events: rows.length,
+        tickets: sum((r) => r.tickets),
+        paidCents: sum((r) => r.paidCents),
+        trackedEvents: tracked.length,
+        trackedTickets: tracked.reduce((n, r) => n + r.tickets, 0),
+        trackedCheckedIn: tracked.reduce((n, r) => n + r.checkedIn, 0),
+      },
+      bySource: merge("bySource"),
+      websiteTags: merge("websiteTags"),
+      codes: merge("codes"),
+      events: rows,
+    });
+  } catch (err) {
+    console.error("Admin reports error:", err.message);
+    res.status(500).json({ error: "Couldn't build the report." });
   }
 });
 
