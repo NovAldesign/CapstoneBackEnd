@@ -25,6 +25,7 @@ const hostingInquirySchema = new mongoose.Schema(
       enum: ["new", "contacted", "quoted", "booked", "closed"],
       default: "new",
     },
+    adminNotes: { type: String, default: "", trim: true }, // private notes from the dashboard
   },
   { timestamps: true }
 );

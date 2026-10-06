@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
 
-// Ticket codes created automatically (e.g. when an artist is approved).
-// Hand-made codes can still live in utilities/promoCodes.js.
+// Ticket codes made in the dashboard (Discount Codes) or automatically
+// when an artist or host is approved. A saved code with the same name as
+// a code in utilities/promoCodes.js takes its place.
 const promoCodeSchema = new mongoose.Schema(
   {
     code: { type: String, required: true, unique: true, uppercase: true, trim: true },
@@ -14,6 +15,14 @@ const promoCodeSchema = new mongoose.Schema(
     expires: { type: String, default: null }, // "YYYY-MM-DD" (last day it works)
     source: { type: String, enum: ["artist", "manual"], default: "manual" },
     artistId: { type: String, default: "" },
+
+    // Rules (same meaning as in utilities/promoCodes.js)
+    oncePerOrder: { type: Boolean, default: false }, // discount one ticket, not every ticket
+    firstTimeOnly: { type: Boolean, default: false }, // only for emails that never bought a GFC ticket
+    collectEmail: { type: Boolean, default: false }, // the bag asks for the buyer's email
+    maxUses: { type: Number, default: 0 }, // 0 = no limit (counts paid orders)
+    eventsOnOrBefore: { type: String, default: null }, // "YYYY-MM-DD": only events on or before this date
+    notes: { type: String, default: "", trim: true },
   },
   { timestamps: true }
 );

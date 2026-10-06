@@ -471,6 +471,82 @@ router.get("/:id/review", async (req, res) => {
   }
 });
 
+// Approve (book) an artist or host for a showcase. Used by the email link and the dashboard.
+// Returns { ok, status, error, event, code, link, emailNote }
+export const approveApplication = async (application, { eventId: wantedEventId, code: wantedCode, sendEmail } = {}) => {
+  // 1. The showcase
+  const eventId = String(wantedEventId || application.eventId || "");
+  const event = mongoose.Types.ObjectId.isValid(eventId)
+    ? await Event.findById(eventId).select("name date endDate location").lean()
+    : null;
+  if (!event) return { ok: false, status: 400, error: "Please choose which showcase they're booked for." };
+
+  // 2. Their ticket code (reuse it if it already works for this showcase)
+  const code = normalizeCode(wantedCode) || (await suggestArtistCode(application.artistName, event));
+  if (code.length < 3 || code.length > 14) {
+    return { ok: false, status: 400, error: "Codes need 3–14 letters or numbers." };
+  }
+  const existing = await codeExists(code);
+  if (existing) {
+    const live = await findPromoCode(code);
+    if (!live || !promoAppliesToEvent(live, event)) {
+      return { ok: false, status: 400, error: `${code} is already used for something else. Please pick a different code.` };
+    }
+  } else {
+    try {
+      await PromoCode.create({
+        code,
+        label: `${roleWord(application)}: ${application.artistName}, ${eventLabel(event)}`,
+        type: "tracking",
+        value: 0,
+        eventIds: [String(event._id)],
+        expires: ymd(event.date),
+        source: "artist",
+        artistId: String(application._id),
+      });
+    } catch (err) {
+      if (err?.code === 11000) return { ok: false, status: 400, error: `${code} is taken. Please pick a different code.` };
+      throw err;
+    }
+  }
+
+  // 3. Approve + book them for this showcase
+  application.status = "approved";
+  application.reviewedAt = application.reviewedAt || new Date();
+  application.eventId = String(event._id);
+  application.eventName = eventLabel(event);
+  application.promoCode = code;
+
+  // 4. Booking email
+  let emailNote = "Booking email not sent (unchecked).";
+  let emailSent = false;
+  if (sendEmail) {
+    try {
+      const sent = await sendBookingEmail(application, event, code);
+      if (sent) {
+        application.bookingEmailSentAt = new Date();
+        emailSent = true;
+        emailNote = `✓ Booking email sent to ${application.email} (you got a copy).`;
+      } else {
+        emailNote = "Email isn't set up on the server, so no booking email was sent.";
+      }
+    } catch (err) {
+      console.error("Booking email failed:", err.message);
+      emailNote = "⚠️ The booking email failed to send. Please email them their link.";
+    }
+  }
+  await application.save();
+  return { ok: true, event, code, link: artistLink(event._id, code), emailNote, emailSent };
+};
+
+// Decline an artist or host and turn off their code
+export const declineApplication = async (application) => {
+  application.status = "declined";
+  application.reviewedAt = new Date();
+  await application.save();
+  await PromoCode.updateMany({ artistId: String(application._id) }, { active: false });
+};
+
 router.post("/:id/review", async (req, res) => {
   const back = `<p><a href="javascript:history.back()">← Go back</a></p>`;
   try {
@@ -479,92 +555,32 @@ router.post("/:id/review", async (req, res) => {
     const { application, action } = found;
     const name = escapeHtml(application.artistName);
 
-      if (action === "decline") {
-      application.status = "declined";
-      application.reviewedAt = new Date();
-      await application.save();
-      // Turn off the ticket code we made for them (if any)
-      await PromoCode.updateMany({ artistId: application._id }, { active: false });
+    if (action === "decline") {
+      await declineApplication(application);
       return res.send(reviewPage(`${name} was declined`, "<p>They won't appear on the website.</p>"));
     }
 
-    // 1. The showcase
-    const eventId = String(req.body?.eventId || application.eventId || "");
-    const event = mongoose.Types.ObjectId.isValid(eventId)
-      ? await Event.findById(eventId).select("name date endDate location").lean()
-      : null;
-    if (!event) return res.status(400).send(reviewPage("Pick a showcase", `<p>Please choose which showcase they're performing at.</p>${back}`));
-
-    // 2. Their ticket code (reuse it if it already works for this showcase)
-    const code = normalizeCode(req.body?.code) || (await suggestArtistCode(application.artistName, event));
-    if (code.length < 3 || code.length > 14) {
-      return res.status(400).send(reviewPage("Check the code", `<p>Codes need 3–14 letters or numbers.</p>${back}`));
+    const result = await approveApplication(application, {
+      eventId: req.body?.eventId,
+      code: req.body?.code,
+      sendEmail: req.body?.sendEmail === "yes",
+    });
+    if (!result.ok) {
+      return res.status(result.status || 400).send(reviewPage("Please check", `<p>${escapeHtml(result.error)}</p>${back}`));
     }
-    const existing = await codeExists(code);
-    if (existing) {
-      const live = await findPromoCode(code);
-      if (!live || !promoAppliesToEvent(live, event)) {
-        return res.status(400).send(reviewPage("That code is taken",
-          `<p><code>${escapeHtml(code)}</code> is already used for something else. Please go back and pick a different code.</p>${back}`));
-      }
-    } else {
-      try {
-        await PromoCode.create({
-          code,
-          label: `${roleWord(application)}: ${application.artistName}, ${eventLabel(event)}`,
-          type: "tracking",
-          value: 0,
-          eventIds: [String(event._id)],
-          expires: ymd(event.date),
-          source: "artist",
-          artistId: String(application._id),
-        });
-      } catch (err) {
-        if (err?.code === 11000) {
-          return res.status(400).send(reviewPage("That code is taken", `<p>Please go back and pick a different code.</p>${back}`));
-        }
-        throw err;
-      }
-    }
-
-    // 3. Approve + book them for this showcase
-    application.status = "approved";
-    application.reviewedAt = application.reviewedAt || new Date();
-    application.eventId = String(event._id);
-    application.eventName = eventLabel(event);
-    application.promoCode = code;
-
-    // 4. Booking email
-    let emailNote = "Booking email not sent (unchecked).";
-    if (req.body?.sendEmail === "yes") {
-      try {
-        const sent = await sendBookingEmail(application, event, code);
-        if (sent) {
-          application.bookingEmailSentAt = new Date();
-          emailNote = `✓ Booking email sent to ${escapeHtml(application.email)} (you got a copy).`;
-        } else {
-          emailNote = "Email isn't set up on the server, so no booking email was sent.";
-        }
-      } catch (err) {
-        console.error("Booking email failed:", err.message);
-        emailNote = "⚠️ The booking email failed to send. Please email them their link below.";
-      }
-    }
-    await application.save();
-
-    const link = artistLink(event._id, code);
+    const { event, code, link, emailNote } = result;
     return res.send(reviewPage(`✅ ${name} is booked`,
       `<div class="box">
          <strong>${escapeHtml(eventLabel(event))}</strong><br/>
          Code: <code>${escapeHtml(code)}</code><br/>
          Their link: <a href="${link}">${escapeHtml(link)}</a>
        </div>
-       <p>${emailNote}</p>
+       <p>${escapeHtml(emailNote)}</p>
        <p>${application.featureConsent
          ? `✓ They now show in <strong>Meet the Artists</strong>. <a href="${eventPageLink(event._id)}">View the event page →</a>`
          : "They won't show in Meet the Artists (they didn't give permission to be featured)."}</p>
        ${photoStatus(application)}
-       <p style="color:#666;font-size:14px;">Their sales will show under <code>${escapeHtml(code)}</code> in your code report.</p>`));
+       <p style="color:#666;font-size:14px;">Their sales will show under <code>${escapeHtml(code)}</code> in your dashboard.</p>`));
   } catch (err) {
     console.error("Artist approve error:", err.message);
     return res.status(500).send(reviewPage("Something went wrong", `<p>Please try again.</p>${back}`));

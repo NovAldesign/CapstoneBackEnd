@@ -53,7 +53,10 @@ router.post("/validate", async (req, res) => {
       type: promo.type,
       value: Number(promo.value) || 0,
       description: describePromo(promo),
-      appliesToAllEvents: (!promo.events || promo.events.length === 0) && !promo.eventsOnOrBefore,
+      appliesToAllEvents:
+        (!promo.events || promo.events.length === 0) &&
+        (!promo.eventIds || promo.eventIds.length === 0) &&
+        !promo.eventsOnOrBefore,
       eligibleEventIds,
       oncePerOrder: Boolean(promo.oncePerOrder),
       firstTimeOnly: Boolean(promo.firstTimeOnly),

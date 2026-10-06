@@ -35,6 +35,7 @@ import artistRoutes from "./routes/artistRoutes.js"; // Artist applications + Me
 import hostingRoutes from "./routes/hostingRoutes.js"; // Play. Sip. Toast. hosting requests (/host page)
 import reviewRoutes from "./routes/reviewRoutes.js"; // Guest reviews for the home page
 import selectRoutes from "./routes/selectRoutes.js"; // GFC Select applications
+import adminHubRoutes from "./routes/adminHubRoutes.js"; // Admin dashboard: inbox, showcases, codes, lists
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -128,6 +129,7 @@ app.use("/api/hosting", hostingRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/select", selectRoutes);
 app.use("/api/discount-partners", discountPartnerRoutes);
+app.use("/api/admin-hub", protect, restrictTo("admin"), adminHubRoutes);
 
 // -------------------------------------------------------
 // 8. STRIPE CANCEL REDIRECT LAYER

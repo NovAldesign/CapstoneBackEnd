@@ -42,9 +42,10 @@ const partnershipSchema = new mongoose.Schema({
     // Kept safe for your internal admin management dashboard panels later
     status: { 
         type: String, 
-        enum: ["pending", "active", "expired", "accepted"], 
+        enum: ["pending", "contacted", "accepted", "active", "declined", "expired"], 
         default: "pending" 
-    }
+    },
+    adminNotes: { type: String, default: "", trim: true }, // private notes from the dashboard
 }, { timestamps: true });
 
 export default mongoose.model("Partnership", partnershipSchema);

@@ -92,7 +92,7 @@ router.route("/membership")
                     { lastName: { $regex: search, $options: "i" } }
                 ];
             }
-            res.json(await Membership.find(query));
+            res.json(await Membership.find(query).select("-password").sort({ createdAt: -1 }));
         } catch (err) { next(err); }
     })
     .post(async (req, res, next) => {
@@ -108,7 +108,7 @@ router.route("/membership")
 router.route("/membership/:id")
     .put(async (req, res, next) => {
         try {
-            const updated = await Membership.findByIdAndUpdate(req.params.id, req.body, { new: true });
+            const updated = await Membership.findByIdAndUpdate(req.params.id, req.body, { new: true }).select("-password");
             res.json(updated);
         } catch (err) { next(err); }
     })

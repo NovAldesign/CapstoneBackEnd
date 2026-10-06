@@ -45,7 +45,7 @@ export const PROMO_CODES = [
 export const normalizeCode = (code = "") =>
   String(code).trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-const isLive = (promo) => {
+export const isLive = (promo) => {
   if (!promo || !promo.active) return false;
   if (promo.expires) {
     const lastDay = new Date(`${promo.expires}T23:59:59-05:00`);
@@ -54,13 +54,14 @@ const isLive = (promo) => {
   return true;
 };
 
-// Any code with this name, even if it's off or expired (so codes are never reused)
+// Any code with this name, even if it's off or expired (so codes are never reused).
+// A code saved in the dashboard wins over a code with the same name in this file.
 export const codeExists = async (code) => {
   const wanted = normalizeCode(code);
   if (!wanted) return null;
-  const fromFile = PROMO_CODES.find((p) => normalizeCode(p.code) === wanted);
-  if (fromFile) return fromFile;
-  return PromoCode.findOne({ code: wanted }).lean();
+  const saved = await PromoCode.findOne({ code: wanted }).lean();
+  if (saved) return saved;
+  return PROMO_CODES.find((p) => normalizeCode(p.code) === wanted) || null;
 };
 
 // Returns the code if it exists, is on, and hasn't expired
@@ -139,7 +140,9 @@ export const describePromo = (promo) => {
 // Every code for the report (file codes + saved codes)
 export const allPromoCodes = async () => {
   const saved = await PromoCode.find().sort({ createdAt: 1 }).lean();
-  return [...PROMO_CODES, ...saved];
+  const savedNames = new Set(saved.map((p) => normalizeCode(p.code)));
+  // File codes the dashboard has taken over are left out
+  return [...PROMO_CODES.filter((p) => !savedNames.has(normalizeCode(p.code))), ...saved];
 };
 
 // Suggest a code for an artist and event, e.g. "Aria Alicia" -> ARIA.

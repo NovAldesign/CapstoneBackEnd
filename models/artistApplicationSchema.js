@@ -51,6 +51,11 @@ const artistApplicationSchema = new mongoose.Schema(
     // Set when you approve
     promoCode: { type: String, default: "", trim: true },
     bookingEmailSentAt: { type: Date, default: null },
+
+    // Payout after the show (set from the dashboard)
+    payoutPaidAt: { type: Date, default: null },
+    payoutAmount: { type: Number, default: 0 }, // dollars
+    adminNotes: { type: String, default: "", trim: true },
   },
   { timestamps: true }
 );
