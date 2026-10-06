@@ -35,6 +35,9 @@ export const PROMO_CODES = [
   // In-the-room QR code: $5 off every ticket, today only (Game Night, Oct 10)
   { code: "ROOM1010", label: "In the room: Game Night Oct 10 QR, $5 off", type: "amount", value: 5, events: [], active: true, expires: "2026-10-10" },
 
+  // Welcome email: $5 off one ticket to Game Night Oct 10, first-time buyers only
+  { code: "WELCOME5", label: "Welcome email: $5 off Game Night Oct 10", type: "amount", value: 5, events: ["spades"], active: true, expires: "2026-10-10", oncePerOrder: true, firstTimeOnly: true, eventsOnOrBefore: "2026-10-10" },
+
   // Oct 30 showcase artists (tracking only, $15 per ticket sold, up to $75)
   { code: "ARIA", label: "Artist: Aria Alicia, Oct 30 showcase", type: "tracking", value: 0, events: ["acoustic"], active: true, expires: "2026-10-30" },
 ];
