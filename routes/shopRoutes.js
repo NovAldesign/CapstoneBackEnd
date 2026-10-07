@@ -8,6 +8,7 @@ import {
   findPass,
   passPrice,
   activeSale,
+  passesOpen,
   GIFT_AMOUNTS,
   giftBonusCents,
   PASS_RULES,
@@ -80,7 +81,8 @@ router.post("/checkout", async (req, res, next) => {
       meta = { shopKind: "gift", productId: "gift", amountCents: String(amount), bonusCents: String(bonus) };
     } else {
       const pass = findPass(b.product);
-      if (!pass) return res.status(400).json({ error: "Please choose a Holiday Pass." });
+      if (!pass) return res.status(400).json({ error: "Please choose a gift card." });
+      if (!passesOpen(now)) return res.status(400).json({ error: "Holiday Passes aren't on sale yet. Gift cards are available now." });
       unitCents = passPrice(pass, now);
       name = `${pass.name} (Grown Folks™ Collective)`;
       description = `${pass.uses} tickets to Game Night, Karaoke Bingo or Acoustic & Infused through Mar 31, 2027.`;

@@ -22,6 +22,9 @@ export const SALES = [
   },
 ];
 
+// Holiday Passes stay hidden until 12:00 AM ET on Black Friday, then stay on sale
+export const PASS_RELEASE = "2026-11-27T00:00:00-05:00";
+
 // Holiday Passes: prepaid tickets to our regular nights
 export const PASSES = [
   {
@@ -66,6 +69,8 @@ export const activeSale = (now = new Date()) =>
 export const nextSale = (now = new Date()) =>
   SALES.filter((s) => new Date(s.start) > now).sort((a, b) => new Date(a.start) - new Date(b.start))[0] || null;
 
+export const passesOpen = (now = new Date()) => now >= new Date(PASS_RELEASE);
+
 export const findPass = (id) => PASSES.find((p) => p.id === id) || null;
 
 // Today's price for a pass
@@ -86,24 +91,26 @@ export const passCoversEvent = (event, expiresAt = PASS_RULES.expires) => {
   return !date || new Date(date) <= new Date(expiresAt);
 };
 
-// Public view of the catalog for the website
+// Public view of the catalog for the website.
+// Nothing about the Holiday Pass or a sale shows before it starts.
 export const publicCatalog = (now = new Date()) => {
   const sale = activeSale(now);
-  const upcoming = nextSale(now);
+  const open = passesOpen(now);
   return {
     sale: sale ? { key: sale.key, label: sale.label, end: sale.end, blurb: sale.blurb } : null,
-    nextSale: upcoming ? { key: upcoming.key, label: upcoming.label, start: upcoming.start, blurb: upcoming.blurb } : null,
-    passes: PASSES.map((p) => ({
-      id: p.id,
-      name: p.name,
-      uses: p.uses,
-      priceCents: passPrice(p, now),
-      regularCents: p.priceCents,
-      valueCents: p.valueCents,
-      onSale: passPrice(p, now) < p.priceCents,
-    })),
+    passesOpen: open,
+    passes: open
+      ? PASSES.map((p) => ({
+          id: p.id,
+          name: p.name,
+          uses: p.uses,
+          priceCents: passPrice(p, now),
+          regularCents: p.priceCents,
+          valueCents: p.valueCents,
+          onSale: passPrice(p, now) < p.priceCents,
+        }))
+      : [],
     passRules: { expires: PASS_RULES.expires, maxCoverCents: PASS_RULES.maxCoverCents },
     giftAmounts: GIFT_AMOUNTS.map((a) => ({ amountCents: a, bonusCents: giftBonusCents(a, now) })),
-    sales: SALES.map((s) => ({ key: s.key, label: s.label, start: s.start, end: s.end, blurb: s.blurb })),
   };
 };
