@@ -10,6 +10,7 @@ import {
   promoUsesLeft,
   promoNeedsEmail,
 } from "../utilities/promoCodes.js";
+import { findUsableCard, looksLikeCard, cardCoversEvent, describeCard } from "../utilities/giftCards.js";
 
 const router = express.Router();
 
@@ -29,8 +30,32 @@ const money = (cents = 0) => `$${(Number(cents) / 100).toFixed(2)}`;
    Tells the bag whether a code works for the events in it.
 ------------------------------------------------------- */
 router.post("/validate", async (req, res) => {
-  try {   
-     const promo = await findPromoCode(req.body.code);
+  try {
+    // Gift cards and Holiday Passes (GIFT-…, PASS-…, BONUS-…)
+    if (looksLikeCard(req.body.code)) {
+      const card = await findUsableCard(req.body.code);
+      if (!card) {
+        return res.status(404).json({ valid: false, error: "That gift card or pass is used up, expired, or not valid." });
+      }
+      const cardIds = (Array.isArray(req.body.eventIds) ? req.body.eventIds : [])
+        .map(String)
+        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+        .slice(0, 40);
+      const cardEvents = cardIds.length ? await Event.find({ _id: { $in: cardIds } }).select("name date") : [];
+      return res.json({
+        valid: true,
+        kind: card.kind, // gift | pass | bonus
+        code: card.code,
+        label: card.label,
+        balanceCents: card.balanceCents,
+        usesLeft: card.usesLeft,
+        maxCoverCents: card.maxCoverCents,
+        description: describeCard(card),
+        eligibleEventIds: cardEvents.filter((e) => cardCoversEvent(card, e)).map((e) => String(e._id)),
+      });
+    }
+
+    const promo = await findPromoCode(req.body.code);
     if (!promo) {
       return res.status(404).json({ valid: false, error: "That code isn't valid or has expired." });
     }

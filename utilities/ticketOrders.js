@@ -99,8 +99,14 @@ export const claimTicketOrder = async (session) => {
       buyerEmail: details.email || session.customer_email || "",
       buyerPhone: details.phone || "",
       totalPaidCents: session.amount_total || 0,
-      discountLabel:
-              session.metadata?.isBundleCheckout === "true" ? "Multi-event bundle discount" : "",
+      discountLabel: [
+        session.metadata?.isBundleCheckout === "true" ? "Multi-event bundle discount" : "",
+        session.metadata?.giftCode
+          ? Number(session.metadata?.passUses) > 0
+            ? `Holiday Pass ${session.metadata.giftCode} (${session.metadata.passUses} ${Number(session.metadata.passUses) === 1 ? "ticket" : "tickets"})`
+            : `Gift card ${session.metadata.giftCode} ($${(Number(session.metadata.giftCreditCents || 0) / 100).toFixed(2)})`
+          : "",
+      ].filter(Boolean).join(" + "),
       promoCode: session.metadata?.promoCode || "",
       source: String(session.metadata?.source || "").slice(0, 40),
       termsAccepted: session.metadata?.termsAccepted === "yes",

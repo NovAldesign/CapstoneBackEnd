@@ -8,6 +8,8 @@ import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders
 import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail } from '../utilities/promoCodes.js';
 import crypto from 'crypto';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
+import { findUsableCard, cardCredit, redeemCard, looksLikeCard } from '../utilities/giftCards.js';
+import { handleShopSession } from './shopRoutes.js';
 
 const router = express.Router();
 
@@ -273,7 +275,14 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(500).json({ error: 'Stripe is not configured on the server.' });
     }
 
-        const { cartItems, customerEmail, promoCode, agreedToTerms, termsVersion, source } = req.body;
+        const { cartItems, customerEmail, agreedToTerms, termsVersion, source } = req.body;
+    let { promoCode, giftCode } = req.body;
+    // A gift card or Holiday Pass typed in the code box is handled as a card, not a discount code
+    if (promoCode && !giftCode && looksLikeCard(promoCode)) { giftCode = promoCode; promoCode = undefined; }
+    const card = giftCode ? await findUsableCard(giftCode) : null;
+    if (giftCode && !card) {
+      return res.status(400).json({ error: "That gift card or Holiday Pass isn't valid, is used up, or has expired. Remove it from your bag and try again." });
+    }
 
     // Optional ticket code (artist, referral, or discount code)
        const promo = promoCode ? await findPromoCode(promoCode) : null;
@@ -358,6 +367,7 @@ router.post('/checkout', async (req, res, next) => {
       verifiedItems.push({
         eventId:        String(event._id),
         eventName:      event.name,
+        eventDate:      event.date,
         ticketTypeId:   String(ticket._id),
         ticketTypeName: ticket.name,
         priceInCents:   fullPriceInCents,
@@ -416,6 +426,25 @@ router.post('/checkout', async (req, res, next) => {
       quantity: item.quantity,
     }));
 
+    // Gift card or Holiday Pass: comes off after codes and the bundle discount
+    let giftCreditCents = 0;
+    let passUses = 0;
+    if (card) {
+      const units = [];
+      verifiedItems.forEach((item) => {
+        const cents = Math.round(item.priceInCents * discountMultiplier);
+        for (let q = 0; q < item.quantity; q++) units.push({ cents, event: { name: item.eventName, date: item.eventDate } });
+      });
+      ({ creditCents: giftCreditCents, uses: passUses } = cardCredit(card, units));
+      if (giftCreditCents <= 0) {
+        return res.status(400).json({
+          error: card.kind === 'pass'
+            ? 'Your Holiday Pass works for Game Night, Karaoke Bingo and Acoustic & Infused tickets. Add one of those to use it.'
+            : "That gift card doesn't have a balance left."
+        });
+      }
+    }
+
     // One metadata entry per ticket so we never hit Stripe's 500-character limit
       const metadata = {
       itemCount:        String(verifiedItems.length),
@@ -426,7 +455,10 @@ router.post('/checkout', async (req, res, next) => {
       // Proof the buyer checked "I agree to the Terms, Refund Policy, and Waiver"
       termsAccepted:    agreedToTerms === true ? 'yes' : 'no',
       termsVersion:     String(termsVersion || '').slice(0, 40),
-      termsAcceptedAt:  agreedToTerms === true ? new Date().toISOString() : ''
+      termsAcceptedAt:  agreedToTerms === true ? new Date().toISOString() : '',
+      giftCode:         card ? card.code : '',
+      giftCreditCents:  String(giftCreditCents),
+      passUses:         String(passUses)
     };
     verifiedItems.forEach((item, idx) => {
       metadata[`item_${idx}`] = JSON.stringify({
@@ -439,8 +471,8 @@ router.post('/checkout', async (req, res, next) => {
     });
 
     // A fully free order (e.g. GFC100 on one ticket) skips Stripe: save it and send the ticket email now
-    const orderTotalCents = lineItems.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0);
-    if (orderTotalCents === 0) {
+    const orderTotalCents = lineItems.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0) - giftCreditCents;
+    if (orderTotalCents <= 0) {
       const freeSession = {
         id: `free_${crypto.randomUUID()}`,
         payment_intent: '',
@@ -451,14 +483,29 @@ router.post('/checkout', async (req, res, next) => {
       };
       const purchasedCart = verifiedItems.map((_, idx) => JSON.parse(metadata[`item_${idx}`]));
       const order = await claimTicketOrder(freeSession);
+      if (card) await redeemCard(card.code, { cents: giftCreditCents, uses: passUses, confirmationCode: order.confirmationCode, stripeSessionId: freeSession.id });
       await syncTicketCounts(purchasedCart);
       try { await completeTicketOrder(order, purchasedCart); } catch (e) { console.error('Free order emails failed:', e.message); }
       return res.status(201).json({ url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?free=1` });
     }
 
+    // The card's credit becomes a one-time Stripe coupon on this checkout
+    let discounts;
+    if (giftCreditCents > 0) {
+      const coupon = await stripe.coupons.create({
+        amount_off: giftCreditCents,
+        currency: 'usd',
+        duration: 'once',
+        max_redemptions: 1,
+        name: card.kind === 'pass' ? `${card.label} (${passUses} ${passUses === 1 ? 'ticket' : 'tickets'})`.slice(0, 40) : `Gift card ${card.code}`.slice(0, 40),
+      });
+      discounts = [{ coupon: coupon.id }];
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
+      ...(discounts && { discounts }),
       customer_email: cleanEmail || undefined,
       phone_number_collection: { enabled: true },
       line_items: lineItems,
@@ -707,6 +754,17 @@ router.post('/webhook/stripe', async (req, res, next) => {
     const session = stripeEvent.data.object;
     const meta = session.metadata || {};
 
+    // Holiday Passes, gift cards and merch have their own handler
+    if (meta.shopKind) {
+      try {
+        const result = await handleShopSession(session);
+        return res.status(200).json({ received: true, ...result });
+      } catch (shopErr) {
+        console.error('Error processing shop webhook:', shopErr);
+        return res.status(500).json({ error: 'Internal error processing shop order.' });
+      }
+    }
+
     try {
       // New format: item_0, item_1, ... (older orders used a single cartDetails field)
       let purchasedCart = [];
@@ -727,6 +785,20 @@ router.post('/webhook/stripe', async (req, res, next) => {
           return res.status(200).json({ received: true, duplicate: true });
         }
         console.log(`Stripe Webhook: Syncing ${purchasedCart.length} ticket line(s)...`);
+
+        // Take the gift card / Holiday Pass credit off the card
+        if (meta.giftCode) {
+          try {
+            await redeemCard(meta.giftCode, {
+              cents: Number(meta.giftCreditCents) || 0,
+              uses: Number(meta.passUses) || 0,
+              confirmationCode: order.confirmationCode,
+              stripeSessionId: session.id,
+            });
+          } catch (cardErr) {
+            console.error('Gift card redemption failed:', cardErr.message);
+          }
+        }
 
         await syncTicketCounts(purchasedCart);
 
