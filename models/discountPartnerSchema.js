@@ -9,6 +9,8 @@ const discountPartnerSchema = new mongoose.Schema(
     phone: { type: String, default: "", trim: true, maxlength: 30 },
     website: { type: String, default: "", trim: true, maxlength: 200 }, // website or Instagram
     category: { type: String, default: "", trim: true, maxlength: 60 },
+    // Logo saved as a small image (resized in the dashboard before upload)
+    logo: { type: String, default: "", maxlength: 120000 },
 
     // Where members can use it
     where: { type: String, enum: ["in-store", "online", "both"], default: "in-store" },
