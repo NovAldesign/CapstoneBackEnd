@@ -168,7 +168,7 @@ router.get("/", async (req, res) => {
       ],
     })
       .sort({ businessName: 1 })
-      .select("businessName website category where address offerType offer redeem finePrint endDate")
+      .select("businessName website category where address offerType offer redeem finePrint endDate logo")
       .lean();
     res.json(perks);
   } catch (err) {
@@ -194,6 +194,13 @@ router.patch("/admin/:id", protect, restrictTo("admin"), async (req, res) => {
     const update = {};
     if (req.body.status) update.status = pick(req.body.status, ["pending", "approved", "paused", "declined"], "pending");
     if (req.body.notes !== undefined) update.notes = clean(req.body.notes, 2000);
+    if (req.body.logo !== undefined) {
+      const logo = String(req.body.logo || "");
+      if (logo && (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logo) || logo.length > 120000)) {
+        return res.status(400).json({ error: "Logo must be a PNG, JPG or WebP image under 90 KB." });
+      }
+      update.logo = logo; // "" removes it
+    }
     const doc = await DiscountPartner.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!doc) return res.status(404).json({ error: "Not found." });
     res.json(doc);
