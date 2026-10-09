@@ -38,6 +38,8 @@ import selectRoutes from "./routes/selectRoutes.js"; // GFC Select applications
 import adminHubRoutes from "./routes/adminHubRoutes.js"; // Admin dashboard: inbox, showcases, codes, lists
 import doorRoutes from "./routes/doorRoutes.js"; // Door check-in link for volunteers
 import shopRoutes from "./routes/shopRoutes.js"; // Holiday Passes, gift cards, merch pre-orders
+import memberRoutes from "./routes/memberRoutes.js"; // Member magic-link login + dashboard
+import { runCreditUpkeep } from "./utilities/memberCredit.js";
 import { deliverScheduledGifts } from "./utilities/giftCards.js";
 
 const app  = express();
@@ -135,6 +137,7 @@ app.use("/api/discount-partners", discountPartnerRoutes);
 app.use("/api/admin-hub", protect, restrictTo("admin"), adminHubRoutes);
 app.use("/api/door", doorRoutes);
 app.use("/api/shop", shopRoutes);
+app.use("/api/member", memberRoutes);
 
 // -------------------------------------------------------
 // 8. STRIPE CANCEL REDIRECT LAYER
@@ -195,6 +198,11 @@ const startServer = async () => {
       const runGifts = () => deliverScheduledGifts().catch((e) => console.error("Scheduled gifts:", e.message));
       runGifts();
       setInterval(runGifts, 10 * 60 * 1000);
+
+      // Member credit: expire old credit and add birthday bonuses (checks every 6 hours)
+      const runCredit = () => runCreditUpkeep().catch((e) => console.error("Member credit upkeep:", e.message));
+      runCredit();
+      setInterval(runCredit, 6 * 60 * 60 * 1000);
     } catch (err) {
       console.error("❌ Deferred Database Connection Error:", err.message);
     }

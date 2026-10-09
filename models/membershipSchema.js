@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+export const INTEREST_OPTIONS = ["Meet New People", "Play / Games", "Conversations", "Food Events", "Travel", "Local Events"];
+
 const membershipSchema = new mongoose.Schema({
   firstName: { type: String, required: true, trim: true },
   lastName: { type: String, required: true, trim: true },
@@ -8,14 +10,28 @@ const membershipSchema = new mongoose.Schema({
   dob: { type: Date, required: true },
   tier: { type: String, enum: ["Social", "Founding"], required: true },
   connectionGoals: {
-    primaryInterest: { type: String, enum: ["Meet New People", "Play / Games", "Conversations", "Food Events", "Travel", "Local Events"], default: "Meet New People" },
+    primaryInterest: { type: String, enum: INTEREST_OPTIONS, default: "Meet New People" },
     isolationBarrier: { type: String, default: "" }
   },
-  // "pending" = applied but hasn't paid yet, "active" = paid, "canceled" = ended
-  status: { type: String, enum: ["pending", "active", "canceled"], default: "pending", index: true },
+  // Everything they're into (picked on the member dashboard)
+  interests: { type: [{ type: String, enum: INTEREST_OPTIONS }], default: [] },
+
+  // "pending" = applied but hasn't paid yet, "active" = paid, "paused" = taking 1–2 months off, "canceled" = ended
+  status: { type: String, enum: ["pending", "active", "paused", "canceled"], default: "pending", index: true },
   stripeCustomerId: { type: String, default: "" },
   stripeSubscriptionId: { type: String, default: "" },
   paidAt: { type: Date, default: null },
+
+  // Kept in sync with Stripe so the dashboard can show them
+  pausedUntil: { type: Date, default: null },      // pause ends and billing restarts
+  cancelAtPeriodEnd: { type: Boolean, default: false },
+  currentPeriodEnd: { type: Date, default: null }, // next billing date (or when a canceled membership ends)
+
+  // Member login (magic link, no password). Only the hash is stored.
+  loginTokenHash: { type: String, default: undefined, select: false },
+  loginTokenExpires: { type: Date, default: undefined, select: false },
+  lastLoginAt: { type: Date, default: null },
+
   // Agreement to auto-renewal, Terms, and Participation Waiver
   autoRenewAgreed: { type: Boolean, default: false },
   termsVersion: { type: String, default: "" },

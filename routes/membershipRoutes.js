@@ -3,6 +3,8 @@ import Stripe from 'stripe';
 import { Resend } from 'resend';
 import dotenv from 'dotenv';
 import Membership from '../models/membershipSchema.js';
+import { grantMonthlyCreditFromInvoice } from '../utilities/memberCredit.js';
+import { syncFromSubscription } from './memberRoutes.js';
 
 // 1. Core Config initialization — MUST run before instantiating Stripe/Resend constructors
 dotenv.config();
@@ -316,6 +318,12 @@ router.post('/webhook', async (req, res) => {
                       </li>
                     </ul>
 
+                    <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin-bottom: 24px;">
+                      <strong>Your member dashboard:</strong> see your event credit, update your info, and manage your membership anytime.
+                      Go to <a href="${process.env.FRONTEND_URL || 'https://www.grownfolkscollective.com'}/login" style="color: #C5A059;">grownfolkscollective.com/login</a>
+                      and enter this email. We'll send you a one-tap login link, no password needed.
+                    </p>
+
                     <p style="font-size: 0.95rem; line-height: 1.7; color: #444444; margin-bottom: 40px;">
                       We built this collective because grown life is better with your people, and real connection shouldn't be hard to find. We can't wait to welcome you face-to-face very soon.
                     </p>
@@ -370,6 +378,30 @@ router.post('/webhook', async (req, res) => {
     }
   }
 
+  // ── A2. A membership month was paid → add that month's event credit ──
+  if (event.type === 'invoice.paid') {
+    try {
+      const lot = await grantMonthlyCreditFromInvoice(event.data.object);
+      if (lot) console.log(`💳 Member credit added: ${lot.cents / 100} (${lot.key})`);
+    } catch (error) {
+      console.error('❌ Member credit grant errored:', error);
+    }
+  }
+
+  // ── A3. Paused, resumed, set to cancel, or renewed → keep the member record in step ──
+  if (event.type === 'customer.subscription.updated') {
+    try {
+      const subscription = event.data.object;
+      const member = await Membership.findOne({ stripeSubscriptionId: subscription.id });
+      if (member) {
+        syncFromSubscription(member, subscription);
+        await member.save({ validateBeforeSave: false });
+      }
+    } catch (error) {
+      console.error('❌ Subscription sync errored:', error);
+    }
+  }
+
   // ── B. Subscription ended (canceled or payment failed for good) → mark canceled ──
   if (event.type === 'customer.subscription.deleted') {
     const subscription = event.data.object;
@@ -377,7 +409,7 @@ router.post('/webhook', async (req, res) => {
     try {
       const member = await Membership.findOneAndUpdate(
         { stripeSubscriptionId: subscription.id },
-        { status: 'canceled' },
+        { status: 'canceled', cancelAtPeriodEnd: false, pausedUntil: null },
         { new: true }
       );
 
