@@ -10,6 +10,10 @@ import crypto from 'crypto';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 import { findUsableCard, cardCredit, redeemCard, looksLikeCard } from '../utilities/giftCards.js';
 import { handleShopSession } from './shopRoutes.js';
+import {
+  memberFromRequest, getsMemberPricing, memberPriceCents, creditForUnits, creditCoversEvent,
+  creditBalanceCents, useCredit,
+} from '../utilities/memberCredit.js';
 
 const router = express.Router();
 
@@ -261,6 +265,20 @@ const syncTicketCounts = async (purchasedCart) => {
   }
 };
 
+// Take member credit for a paid ticket order (once per Stripe session)
+const spendMemberCredit = async (meta, sessionId, confirmationCode) => {
+  const cents = Number(meta.memberCreditCents) || 0;
+  if (!meta.memberId || cents <= 0) return 0;
+  const taken = await useCredit(meta.memberId, cents, {
+    key: `order:${sessionId}`,
+    note: `Tickets ${confirmationCode || ''}`.trim(),
+  });
+  if (taken < cents) {
+    console.warn(`Member credit short on ${confirmationCode}: planned ${cents}, took ${taken} (member ${meta.memberId})`);
+  }
+  return taken;
+};
+
 /* -------------------------------------------------------
    POST /api/events/checkout
    Public — Multi-ticket/Multi-event bundle checkout
@@ -275,11 +293,14 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(500).json({ error: 'Stripe is not configured on the server.' });
     }
 
-        const { cartItems, customerEmail, agreedToTerms, termsVersion, source } = req.body;
+        const { cartItems, customerEmail, agreedToTerms, termsVersion, source, useMemberCredit } = req.body;
+    // Logged-in member (optional): member pricing + event credit
+    const member = await memberFromRequest(req);
+    const memberPricing = getsMemberPricing(member);
     let { promoCode, giftCode } = req.body;
     // A gift card or Holiday Pass typed in the code box is handled as a card, not a discount code
     if (promoCode && !giftCode && looksLikeCard(promoCode)) { giftCode = promoCode; promoCode = undefined; }
-    const card = giftCode ? await findUsableCard(giftCode) : null;
+    let card = giftCode ? await findUsableCard(giftCode) : null;
     if (giftCode && !card) {
       return res.status(400).json({ error: "That gift card or Holiday Pass isn't valid, is used up, or has expired. Remove it from your bag and try again." });
     }
@@ -296,7 +317,7 @@ router.post('/checkout', async (req, res, next) => {
     }
 
     // Some codes need an email: first-visit codes (ACE5) and free-ticket codes (GFC100)
-    const cleanEmail = String(customerEmail || '').trim().toLowerCase();
+    const cleanEmail = String(customerEmail || member?.email || '').trim().toLowerCase();
     if (promoNeedsEmail(promo) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({ error: `Enter your email in the bag to use ${promo.code.toUpperCase()}.` });
     }
@@ -331,6 +352,7 @@ router.post('/checkout', async (req, res, next) => {
     // Check every ticket and use the database price
     const now = new Date();
     const verifiedItems = [];
+    let memberSavingsCents = 0;
 
     for (const [key, qty] of requested) {
       const [eventId, ticketTypeId] = key.split(':');
@@ -345,6 +367,12 @@ router.post('/checkout', async (req, res, next) => {
       const ticket = isValidId(ticketTypeId) ? event.ticketTypes.id(ticketTypeId) : null;
       if (!ticket || ticket.hidden) {
         return res.status(400).json({ error: `A ticket for "${event.name}" is no longer available. Please remove it and try again.` });
+      }
+      // Member prices come off automatically, so "Member" ticket types aren't sold on the website
+      if (/member/i.test(ticket.name || '')) {
+        return res.status(400).json({ error: memberPricing
+          ? `Your member price comes off automatically. Please remove "${ticket.name}" and add the regular ticket for "${event.name}".`
+          : `"${ticket.name}" is for members. Members log in at grownfolkscollective.com/login and their price comes off automatically.` });
       }
       if (ticket.salesStart && ticket.salesStart > now) {
         return res.status(400).json({ error: `"${ticket.name}" for "${event.name}" isn't on sale yet.` });
@@ -363,6 +391,9 @@ router.post('/checkout', async (req, res, next) => {
 
         const fullPriceInCents = Math.round(ticket.price * 100);
       const codeApplies = promo ? promoAppliesToEvent(promo, event) : false;
+      // Member price first, then codes and the bundle discount
+      const startPriceInCents = memberPricing ? memberPriceCents(member.tier, fullPriceInCents, event.name) : fullPriceInCents;
+      memberSavingsCents += (fullPriceInCents - startPriceInCents) * qty;
 
       verifiedItems.push({
         eventId:        String(event._id),
@@ -370,7 +401,7 @@ router.post('/checkout', async (req, res, next) => {
         eventDate:      event.date,
         ticketTypeId:   String(ticket._id),
         ticketTypeName: ticket.name,
-        priceInCents:   fullPriceInCents,
+        priceInCents:   startPriceInCents,
         quantity:       qty,
         codeApplies
       });
@@ -426,17 +457,38 @@ router.post('/checkout', async (req, res, next) => {
       quantity: item.quantity,
     }));
 
-    // Gift card or Holiday Pass: comes off after codes and the bundle discount
+    // One entry per ticket, after codes and the bundle discount
+    const units = [];
+    verifiedItems.forEach((item) => {
+      const cents = Math.round(item.priceInCents * discountMultiplier);
+      for (let q = 0; q < item.quantity; q++) units.push({ cents, name: item.eventName, event: { name: item.eventName, date: item.eventDate } });
+    });
+
+    // Member event credit: after member price, codes and bundle; before gift cards and passes.
+    // Covers Game Night, Karaoke Bingo and Acoustic & Infused tickets only.
+    let memberCreditCents = 0;
+    if (member && useMemberCredit !== false) {
+      const balance = await creditBalanceCents(member._id);
+      memberCreditCents = creditForUnits(balance, units);
+      // Take it off the eligible tickets so a gift card or pass only sees what's left
+      let left = memberCreditCents;
+      for (const u of units) {
+        if (left <= 0) break;
+        if (!creditCoversEvent(u.name)) continue;
+        const take = Math.min(left, u.cents);
+        u.cents -= take;
+        left -= take;
+      }
+    }
+
+    // Gift card or Holiday Pass: comes off last
     let giftCreditCents = 0;
     let passUses = 0;
     if (card) {
-      const units = [];
-      verifiedItems.forEach((item) => {
-        const cents = Math.round(item.priceInCents * discountMultiplier);
-        for (let q = 0; q < item.quantity; q++) units.push({ cents, event: { name: item.eventName, date: item.eventDate } });
-      });
-      ({ creditCents: giftCreditCents, uses: passUses } = cardCredit(card, units));
-      if (giftCreditCents <= 0) {
+      ({ creditCents: giftCreditCents, uses: passUses } = cardCredit(card, units.filter((u) => u.cents > 0)));
+      // Member credit already covered everything: leave the card untouched
+      if (giftCreditCents <= 0 && memberCreditCents > 0 && units.every((u) => u.cents <= 0)) card = null;
+      else if (giftCreditCents <= 0) {
         return res.status(400).json({
           error: card.kind === 'pass'
             ? 'Your Holiday Pass works for Game Night, Karaoke Bingo and Acoustic & Infused tickets. Add one of those to use it.'
@@ -458,7 +510,11 @@ router.post('/checkout', async (req, res, next) => {
       termsAcceptedAt:  agreedToTerms === true ? new Date().toISOString() : '',
       giftCode:         card ? card.code : '',
       giftCreditCents:  String(giftCreditCents),
-      passUses:         String(passUses)
+      passUses:         String(passUses),
+      memberId:         member ? String(member._id) : '',
+      memberTier:       member ? String(member.tier || '') : '',
+      memberSavingsCents: String(memberSavingsCents),
+      memberCreditCents:  String(memberCreditCents)
     };
     verifiedItems.forEach((item, idx) => {
       metadata[`item_${idx}`] = JSON.stringify({
@@ -471,7 +527,7 @@ router.post('/checkout', async (req, res, next) => {
     });
 
     // A fully free order (e.g. GFC100 on one ticket) skips Stripe: save it and send the ticket email now
-    const orderTotalCents = lineItems.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0) - giftCreditCents;
+    const orderTotalCents = lineItems.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0) - giftCreditCents - memberCreditCents;
     if (orderTotalCents <= 0) {
       const freeSession = {
         id: `free_${crypto.randomUUID()}`,
@@ -483,21 +539,24 @@ router.post('/checkout', async (req, res, next) => {
       };
       const purchasedCart = verifiedItems.map((_, idx) => JSON.parse(metadata[`item_${idx}`]));
       const order = await claimTicketOrder(freeSession);
+      if (memberCreditCents > 0) await spendMemberCredit(metadata, freeSession.id, order.confirmationCode);
       if (card) await redeemCard(card.code, { cents: giftCreditCents, uses: passUses, confirmationCode: order.confirmationCode, stripeSessionId: freeSession.id });
       await syncTicketCounts(purchasedCart);
       try { await completeTicketOrder(order, purchasedCart); } catch (e) { console.error('Free order emails failed:', e.message); }
       return res.status(201).json({ url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?free=1` });
     }
 
-    // The card's credit becomes a one-time Stripe coupon on this checkout
+    // Member credit and the card's credit become one one-time Stripe coupon on this checkout
     let discounts;
-    if (giftCreditCents > 0) {
+    if (giftCreditCents + memberCreditCents > 0) {
+      const cardName = !card ? '' : card.kind === 'pass' ? `${card.label} (${passUses} ${passUses === 1 ? 'ticket' : 'tickets'})` : `Gift card ${card.code}`;
+      const name = [memberCreditCents > 0 ? 'Member credit' : '', giftCreditCents > 0 ? cardName : ''].filter(Boolean).join(' + ');
       const coupon = await stripe.coupons.create({
-        amount_off: giftCreditCents,
+        amount_off: giftCreditCents + memberCreditCents,
         currency: 'usd',
         duration: 'once',
         max_redemptions: 1,
-        name: card.kind === 'pass' ? `${card.label} (${passUses} ${passUses === 1 ? 'ticket' : 'tickets'})`.slice(0, 40) : `Gift card ${card.code}`.slice(0, 40),
+        name: name.slice(0, 40),
       });
       discounts = [{ coupon: coupon.id }];
     }
@@ -511,6 +570,8 @@ router.post('/checkout', async (req, res, next) => {
       line_items: lineItems,
       success_url: `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url:  `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events?cancelled=true`,
+      // Credit is taken when payment completes, so keep the window short
+      ...(memberCreditCents > 0 && { expires_at: Math.floor(Date.now() / 1000) + 30 * 60 }),
       metadata
     });
 
@@ -785,6 +846,15 @@ router.post('/webhook/stripe', async (req, res, next) => {
           return res.status(200).json({ received: true, duplicate: true });
         }
         console.log(`Stripe Webhook: Syncing ${purchasedCart.length} ticket line(s)...`);
+
+        // Take the member's event credit
+        if (Number(meta.memberCreditCents) > 0) {
+          try {
+            await spendMemberCredit(meta, session.id, order.confirmationCode);
+          } catch (creditErr) {
+            console.error('Member credit redemption failed:', creditErr.message);
+          }
+        }
 
         // Take the gift card / Holiday Pass credit off the card
         if (meta.giftCode) {

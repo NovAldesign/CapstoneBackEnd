@@ -8,7 +8,10 @@ import Membership, { INTEREST_OPTIONS } from "../models/membershipSchema.js";
 import DiscountPartner from "../models/discountPartnerSchema.js";
 import MemberCredit from "../models/memberCreditSchema.js";
 import { protect, restrictTo } from "../middleware/authMiddleware.js";
-import { creditSummary, grantCredit, MONTHLY_CREDIT_CENTS } from "../utilities/memberCredit.js";
+import {
+  creditSummary, grantCredit, creditBalanceCents, getsMemberPricing,
+  MONTHLY_CREDIT_CENTS, MEMBER_TICKET_OFF_CENTS, MEMBER_FOOD_PERCENT,
+} from "../utilities/memberCredit.js";
 
 // -------------------------------------------------------
 // Member login (magic link) + member dashboard
@@ -257,6 +260,29 @@ router.get("/me", memberOnly, async (req, res) => {
   } catch (err) {
     console.error("Member dashboard error:", err);
     res.status(500).json({ error: "Couldn't load your dashboard. Please refresh." });
+  }
+});
+
+/* -------------------------------------------------------
+   GET /api/member/wallet  — what the ticket bag needs:
+   member price and event credit balance
+------------------------------------------------------- */
+router.get("/wallet", memberOnly, async (req, res) => {
+  try {
+    const m = req.member;
+    const tier = m.tier === "Founding" ? "Founding" : "Social";
+    res.json({
+      firstName: m.firstName,
+      tier,
+      status: m.status,
+      memberPricing: getsMemberPricing(m),
+      ticketOffCents: MEMBER_TICKET_OFF_CENTS[tier],
+      foodPercent: MEMBER_FOOD_PERCENT[tier],
+      balanceCents: await creditBalanceCents(m._id),
+    });
+  } catch (err) {
+    console.error("Member wallet error:", err);
+    res.status(500).json({ error: "Couldn't load your member credit." });
   }
 });
 

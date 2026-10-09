@@ -1,5 +1,7 @@
+import jwt from "jsonwebtoken";
 import Membership from "../models/membershipSchema.js";
 import MemberCredit from "../models/memberCreditSchema.js";
+import { PASS_RULES } from "./shopCatalog.js";
 
 // -------------------------------------------------------
 // Member event credit rules (decided Oct 1)
@@ -227,3 +229,57 @@ export const creditSummary = async (memberId, now = new Date()) => {
 
   return { balanceCents, nextExpiring, history };
 };
+
+/* -------------------------------------------------------
+   Member pricing at ticket checkout (matches /membership)
+   - Active members: $5 off every ticket (Founding $7),
+     including tickets for friends in the same order
+   - Food events: 10% off instead (Founding 15%)
+   - Event credit works on Game Night, Karaoke Bingo and
+     Acoustic & Infused only (same events as the Holiday Pass)
+   MUST match src/Services/memberPricing.js on the website.
+------------------------------------------------------- */
+export const MEMBER_TICKET_OFF_CENTS = { Social: 500, Founding: 700 };
+export const MEMBER_FOOD_PERCENT = { Social: 10, Founding: 15 };
+export const FOOD_EVENT_RE = /friendsgiving|holiday table|dinner|cookout|brunch|supper|food/i;
+
+export const isFoodEvent = (name = "") => FOOD_EVENT_RE.test(String(name));
+
+export const creditCoversEvent = (name = "") => {
+  const n = String(name);
+  return PASS_RULES.include.test(n) && !PASS_RULES.exclude.test(n) && !isFoodEvent(n);
+};
+
+// Price of one ticket for a member (cents)
+export const memberPriceCents = (tier, cents, eventName) => {
+  if (!(cents > 0)) return 0;
+  const t = tier === "Founding" ? "Founding" : "Social";
+  if (isFoodEvent(eventName)) return Math.round(cents * (1 - MEMBER_FOOD_PERCENT[t] / 100));
+  return Math.max(0, cents - MEMBER_TICKET_OFF_CENTS[t]);
+};
+
+// Member credit for an order: oldest credit first, eligible tickets only.
+// units: one entry per ticket { cents, name } after all other discounts.
+export const creditForUnits = (balanceCents, units = []) => {
+  const eligible = units.filter((u) => creditCoversEvent(u.name)).reduce((s, u) => s + u.cents, 0);
+  return Math.max(0, Math.min(balanceCents, eligible));
+};
+
+// The logged-in member behind a checkout request, or null (never throws).
+// Guests check out exactly as before.
+export const memberFromRequest = async (req) => {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token || !process.env.JWT_SECRET) return null;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (String(decoded.role).toLowerCase() !== "member") return null;
+    const member = await Membership.findById(decoded.id);
+    if (!member || member.status === "pending") return null;
+    return member;
+  } catch {
+    return null;
+  }
+};
+
+// Member price only while the membership is active (not paused or canceled)
+export const getsMemberPricing = (member) => Boolean(member && member.status === "active");
