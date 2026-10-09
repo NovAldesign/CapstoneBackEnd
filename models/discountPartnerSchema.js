@@ -33,6 +33,8 @@ const discountPartnerSchema = new mongoose.Schema(
     status: { type: String, enum: ["pending", "approved", "paused", "ended", "declined"], default: "pending" },
     notes: { type: String, default: "", maxlength: 2000 },
     source: { type: String, default: "", trim: true, maxlength: 60 },
+    // Fake partner from the dashboard's Test partner tool (never shown to members)
+    isTest: { type: Boolean, default: false },
     // Partner portal (magic-link sign-in, uploads, checklist, agreement, payment)
     portal: { type: partnerPortalSchema, default: () => ({}) },
   },

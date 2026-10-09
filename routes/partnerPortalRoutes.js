@@ -466,6 +466,7 @@ const adminRow = async (kind, doc, eventsById) => {
   return {
     kind,
     _id: doc._id,
+    isTest: Boolean(doc.isTest),
     name: nameOf(kind, doc),
     contactName: contactOf(kind, doc),
     email: doc.email,
@@ -605,6 +606,92 @@ router.patch("/admin/:kind/:id", admin, async (req, res) => {
   } catch (err) {
     console.error("Partner admin save error:", err);
     res.status(400).json({ error: "Couldn't save." });
+  }
+});
+
+/* -------------------------------------------------------
+   Test partner (like the test member): a fake sponsor or perk
+   under your email, to click through the portal.
+   POST   /api/partner/admin/test  { email, kind: "sponsor"|"perk", tier }
+   DELETE /api/partner/admin/test  { email }
+------------------------------------------------------- */
+router.post("/admin/test", admin, async (req, res) => {
+  try {
+    const email = clean(req.body?.email, 120).toLowerCase();
+    const kind = req.body?.kind === "perk" ? "perk" : "sponsor";
+    const tier = ["Bronze", "Silver", "Gold"].includes(req.body?.tier) ? req.body.tier : "Silver";
+    if (!isEmail(email)) return res.status(400).json({ error: "Enter an email you can open." });
+
+    const Model = KINDS[kind];
+    if (await Model.exists({ email, isTest: { $ne: true } })) {
+      return res.status(409).json({ error: `That email belongs to a real ${kind === "perk" ? "Member Perk partner" : "sponsor"}. Use a different inbox (like you+test@gmail.com).` });
+    }
+
+    let doc = await Model.findOne({ email, isTest: true });
+    if (!doc) doc = new Model({ email, isTest: true });
+    if (kind === "sponsor") {
+      const next = await Event.findOne({ status: "published", date: { $gte: new Date() } }).sort({ date: 1 }).select("_id").lean();
+      doc.set({
+        companyName: `Test Sponsor Co (${tier})`,
+        contactPerson: "Test Partner",
+        phone: "000-000-0000",
+        tierRequested: tier,
+        eventsInterested: ["Karaoke Bingo"],
+        details: "Test sponsor from the dashboard. Safe to delete.",
+        status: "accepted",
+        portal: { invitedAt: new Date(), lastReminderAt: new Date(), amountCents: 100, eventId: next ? String(next._id) : "", loadIn: "5:30 PM, side entrance (test)" },
+      });
+    } else {
+      doc.set({
+        businessName: "Test Perk Shop",
+        contactName: "Test Partner",
+        phone: "000-000-0000",
+        category: "Test",
+        where: "in-store",
+        address: "123 Test St, Atlanta, GA",
+        offerType: "percent",
+        offer: "15% off your order (test)",
+        redeem: "show-membership",
+        promoCode: "",
+        finePrint: "",
+        endDate: null,
+        logo: "",
+        agreed: true,
+        agreedAt: new Date(),
+        status: "approved",
+        source: "test",
+        portal: { invitedAt: new Date(), lastReminderAt: new Date() },
+      });
+    }
+    await doc.save();
+
+    const token = await issueLink(kind, doc, INVITE_DAYS * 24 * 60);
+    const emailed = await sendInviteEmail(kind, doc, token).catch(() => false);
+    res.json({
+      kind,
+      email,
+      link: portalLink(token),
+      emailed: Boolean(emailed),
+      amountCents: kind === "sponsor" ? 100 : 0,
+    });
+  } catch (err) {
+    console.error("Test partner error:", err);
+    res.status(500).json({ error: "Couldn't make the test partner." });
+  }
+});
+
+router.delete("/admin/test", admin, async (req, res) => {
+  try {
+    const email = clean(req.body?.email, 120).toLowerCase();
+    if (!isEmail(email)) return res.status(400).json({ error: "Enter the test email." });
+    const a = await KINDS.sponsor.deleteMany({ email, isTest: true });
+    const b = await KINDS.perk.deleteMany({ email, isTest: true });
+    const n = a.deletedCount + b.deletedCount;
+    if (!n) return res.status(404).json({ error: "No test partner with that email." });
+    res.json({ deleted: n });
+  } catch (err) {
+    console.error("Delete test partner error:", err);
+    res.status(500).json({ error: "Couldn't delete it." });
   }
 });
 

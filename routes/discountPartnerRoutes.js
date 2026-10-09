@@ -162,6 +162,7 @@ router.get("/", async (req, res) => {
     const now = new Date();
     const perks = await DiscountPartner.find({
       status: "approved",
+      isTest: { $ne: true },
       $and: [
         { $or: [{ startDate: null }, { startDate: { $lte: now } }] },
         { $or: [{ endDate: null }, { endDate: { $gte: now } }] },

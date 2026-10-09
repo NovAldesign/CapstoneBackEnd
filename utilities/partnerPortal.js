@@ -258,7 +258,7 @@ const MAX_REMINDERS = 3;
 export const runPartnerReminders = async (now = new Date()) => {
   let sent = 0;
   const due = { $or: [{ "portal.lastReminderAt": null }, { "portal.lastReminderAt": { $lte: new Date(now - REMIND_EVERY_MS) } }] };
-  const base = { "portal.invitedAt": { $ne: null, $lte: new Date(now - 2 * 24 * 3600 * 1000) }, "portal.remindersSent": { $lt: MAX_REMINDERS }, ...due };
+  const base = { isTest: { $ne: true }, "portal.invitedAt": { $ne: null, $lte: new Date(now - 2 * 24 * 3600 * 1000) }, "portal.remindersSent": { $lt: MAX_REMINDERS }, ...due };
 
   const groups = [
     ["sponsor", await Partnership.find({ ...base, status: { $in: ["accepted", "active"] } })],

@@ -47,6 +47,8 @@ const partnershipSchema = new mongoose.Schema({
         default: "pending" 
     },
     adminNotes: { type: String, default: "", trim: true }, // private notes from the dashboard
+    // Fake partner from the dashboard's Test partner tool
+    isTest: { type: Boolean, default: false },
     // Partner portal (magic-link sign-in, uploads, checklist, agreement, payment)
     portal: { type: partnerPortalSchema, default: () => ({}) },
 }, { timestamps: true });
