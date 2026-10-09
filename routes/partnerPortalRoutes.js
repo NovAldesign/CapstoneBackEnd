@@ -331,12 +331,14 @@ router.post("/agree", partnerOnly, async (req, res) => {
     const name = clean(req.body?.name, 120);
     if (name.length < 2) return res.status(400).json({ error: "Type your full name to sign." });
     if (req.body?.agree !== true) return res.status(400).json({ error: "Check the box to agree." });
+    if (req.body?.readInFull !== true) return res.status(400).json({ error: "Please scroll through the whole agreement before signing." });
     const doc = req.partner;
     doc.portal.agreement = {
       name,
       signedAt: new Date(),
       version: req.kind === "perk" ? PERK_TERMS_VERSION : SPONSOR_TERMS_VERSION,
       ip: clean(req.headers["x-forwarded-for"]?.split(",")[0] || req.ip, 60),
+      readInFull: true,
     };
     await doc.save();
     notifyTeam(`${req.kind === "perk" ? "Member Perk terms" : "Sponsor Agreement"} signed: ${nameOf(req.kind, doc)}`, [

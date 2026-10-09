@@ -42,6 +42,7 @@ const partnerPortalSchema = new mongoose.Schema(
       signedAt: { type: Date, default: null },
       version: str(40),
       ip: str(60),
+      readInFull: { type: Boolean, default: false }, // scrolled to the end before signing
     },
 
     // Sponsor payment
