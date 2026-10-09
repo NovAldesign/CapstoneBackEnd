@@ -85,6 +85,52 @@ router.get("/upload-signature", (req, res) => {
 });
 
 /* -------------------------------------------------------
+   Showcase spots: a date stays open until it's full.
+   Full = enough APPROVED artists (or a host) for that showcase.
+   MUST match ARTIST_SLOTS in src/Components/admin/AdminShowcases.jsx
+------------------------------------------------------- */
+export const SHOWCASE_SLOTS = { artist: 3, host: 1 };
+const SHOWCASE_EVENT = /showcase|live music|acoustic|open mic|concert|jam session/i;
+
+const showcaseAvailability = async () => {
+  const events = (await Event.find({ status: "published", date: { $gte: new Date() } })
+    .sort({ date: 1 })
+    .select("name date")
+    .lean()).filter((e) => SHOWCASE_EVENT.test(e.name || ""));
+  const ids = events.map((e) => String(e._id));
+  const booked = await ArtistApplication.aggregate([
+    { $match: { status: "approved", eventId: { $in: ids } } },
+    { $group: { _id: { eventId: "$eventId", role: { $ifNull: ["$role", "artist"] } }, n: { $sum: 1 } } },
+  ]);
+  const count = (id, role) => booked.find((b) => b._id.eventId === id && b._id.role === role)?.n || 0;
+  return events.map((e) => {
+    const id = String(e._id);
+    const artists = count(id, "artist");
+    const hosts = count(id, "host");
+    return {
+      _id: id,
+      name: e.name,
+      date: e.date,
+      artistSpotsLeft: Math.max(0, SHOWCASE_SLOTS.artist - artists),
+      hostSpotsLeft: Math.max(0, SHOWCASE_SLOTS.host - hosts),
+    };
+  });
+};
+
+/* -------------------------------------------------------
+   GET /api/artists/showcases  — Public
+   Upcoming showcases for the /perform dropdown, with open spots
+------------------------------------------------------- */
+router.get("/showcases", async (req, res) => {
+  try {
+    res.json(await showcaseAvailability());
+  } catch (err) {
+    console.error("Showcase availability error:", err.message);
+    res.status(500).json({ error: "Couldn't load showcases." });
+  }
+});
+
+/* -------------------------------------------------------
    POST /api/artists/apply  — Public
 ------------------------------------------------------- */
 router.post("/apply", async (req, res) => {
@@ -122,6 +168,15 @@ router.post("/apply", async (req, res) => {
     }
     if (!signatureName) {
       return res.status(400).json({ error: "Please type your full name to sign." });
+    }
+    // A full showcase can't take new applications (they can still pick "Any upcoming showcase")
+    if (mongoose.Types.ObjectId.isValid(String(b.eventId || ""))) {
+      const spot = (await showcaseAvailability()).find((s) => s._id === String(b.eventId));
+      if (spot && (role === "host" ? spot.hostSpotsLeft : spot.artistSpotsLeft) <= 0) {
+        return res.status(400).json({
+          error: `That showcase just filled up. Please pick another date or "Any upcoming showcase" and we'll match you with the next one.`,
+        });
+      }
     }
 
     // Only accept headshots uploaded to our own Cloudinary account
