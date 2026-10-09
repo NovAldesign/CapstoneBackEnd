@@ -20,7 +20,7 @@ export const LINK_MINUTES = 30; // link from "email me a new link"
 export const SESSION_DAYS = 30;
 
 // Bump when the agreement wording changes (also in src/content/legalContent.js)
-export const SPONSOR_TERMS_VERSION = "2026-10-09";
+export const SPONSOR_TERMS_VERSION = "2026-10-09.2"; // payment due 14 days before
 export const PERK_TERMS_VERSION = "2026-10-09";
 
 // Sponsor tiers (per event). MUST match src/Pages/Partnership.jsx
@@ -66,7 +66,7 @@ export const checklistFor = (kind, doc) => {
   const onSite = tier !== "bronze"; // Silver, Gold and custom partners show up in person
   const items = [
     { key: "logo", label: "Logo (PNG or SVG)", done: Boolean(p.logoUrl) },
-    { key: "blurb", label: "A short description of your brand (about 50 words)", done: Boolean(p.blurb) },
+    { key: "blurb", label: "A short description of your brand (about 50 words)", done: Boolean(p.blurb) && String(p.blurb).trim().split(/\s+/).length <= 80 },
     { key: "socials", label: "Website and social links", done: Boolean(p.website || p.instagram || p.facebook || p.tiktok) },
   ];
   if (onSite) {

@@ -30,8 +30,13 @@ const clean = (value, max = 200) => String(value ?? "").trim().slice(0, max);
 const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 const isId = (v) => /^[a-f0-9]{24}$/i.test(String(v || ""));
 const isUrl = (v) => !v || /^https?:\/\/\S+$/i.test(v);
+// "www.brand.com" → "https://www.brand.com" (people rarely type the https://)
+const fixLink = (v, max = 200) => {
+  const s = clean(v, max).replace(/\s+/g, "");
+  if (!s) return "";
+  return /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, "")}`;
+};
 const isCloudinary = (v) => !v || (CLOUD_NAME ? new RegExp(`^https://res\\.cloudinary\\.com/${CLOUD_NAME}/`).test(v) : /^https:\/\/res\.cloudinary\.com\//.test(v));
-const words = (v) => String(v || "").trim().split(/\s+/).filter(Boolean).length;
 
 const linkLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -256,13 +261,10 @@ router.patch("/me", partnerOnly, async (req, res) => {
     const p = doc.portal;
 
     if (kind === "sponsor") {
+      // Partial saves are fine: partners can finish later
       for (const [key, max] of Object.entries(SPONSOR_FIELDS)) {
-        if (b[key] !== undefined) p[key] = clean(b[key], max);
+        if (b[key] !== undefined) p[key] = ["website", "facebook"].includes(key) ? fixLink(b[key], max) : clean(b[key], max);
       }
-      if (b.blurb !== undefined && words(p.blurb) > 80) {
-        return res.status(400).json({ error: "Please keep your description to about 50 words (80 max)." });
-      }
-      if (![p.website, p.facebook].every(isUrl)) return res.status(400).json({ error: "Links need to start with https://." });
       if (b.logoUrl !== undefined) {
         if (!isCloudinary(b.logoUrl)) return res.status(400).json({ error: "Please upload your logo here in the portal." });
         p.logoUrl = clean(b.logoUrl, 400);
@@ -286,7 +288,9 @@ router.patch("/me", partnerOnly, async (req, res) => {
         doc.endDate = d;
       }
       if (!doc.offer) return res.status(400).json({ error: "Please describe your discount." });
-      if (doc.redeem === "promo-code" && !doc.promoCode) return res.status(400).json({ error: "Please add the promo code members should use." });
+      if ((b.confirm === true || p.perkConfirmedAt) && doc.redeem === "promo-code" && !doc.promoCode) {
+        return res.status(400).json({ error: "Please add the promo code members should use." });
+      }
       if (b.logo !== undefined) {
         const logo = String(b.logo || "");
         if (logo && (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logo) || logo.length > 120000)) {
@@ -586,9 +590,9 @@ router.patch("/admin/:kind/:id", admin, async (req, res) => {
         p.eventId = b.eventId || "";
       }
       if (b.loadIn !== undefined) p.loadIn = clean(b.loadIn, 120);
-      if (b.recapUrl !== undefined) p.recapUrl = clean(b.recapUrl, 400);
+      if (b.recapUrl !== undefined) p.recapUrl = fixLink(b.recapUrl, 400);
       if (b.recapNote !== undefined) p.recapNote = clean(b.recapNote, 1000);
-      if (b.newsletterUrl !== undefined) p.newsletterUrl = clean(b.newsletterUrl, 400);
+      if (b.newsletterUrl !== undefined) p.newsletterUrl = fixLink(b.newsletterUrl, 400);
       if (![p.recapUrl, p.newsletterUrl].every(isUrl)) return res.status(400).json({ error: "Links need to start with https://." });
       // Paid by check, Zelle or cash
       if (b.markPaid === true && !p.paidAt) {
