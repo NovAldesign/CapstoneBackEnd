@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 import { findUsableCard, cardCredit, redeemCard, looksLikeCard } from '../utilities/giftCards.js';
 import { handleShopSession } from './shopRoutes.js';
+import { markSponsorPaid } from './partnerPortalRoutes.js';
 import {
   memberFromRequest, getsMemberPricing, memberPriceCents, creditForUnits, creditCoversEvent,
   creditBalanceCents, useCredit,
@@ -814,6 +815,17 @@ router.post('/webhook/stripe', async (req, res, next) => {
   if (stripeEvent.type === 'checkout.session.completed') {
     const session = stripeEvent.data.object;
     const meta = session.metadata || {};
+
+    // Sponsor payments from the partner portal
+    if (meta.partnerPortal) {
+      try {
+        await markSponsorPaid(session);
+        return res.status(200).json({ received: true, partner: true });
+      } catch (partnerErr) {
+        console.error('Error processing sponsor payment webhook:', partnerErr);
+        return res.status(500).json({ error: 'Internal error processing sponsor payment.' });
+      }
+    }
 
     // Holiday Passes, gift cards and merch have their own handler
     if (meta.shopKind) {

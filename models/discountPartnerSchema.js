@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import partnerPortalSchema from "./partnerPortalSchema.js";
 
 // Member Perks: local businesses that offer a discount to GFC members
 const discountPartnerSchema = new mongoose.Schema(
@@ -29,9 +30,11 @@ const discountPartnerSchema = new mongoose.Schema(
     agreedAt: { type: Date, default: null },
 
     // Admin
-    status: { type: String, enum: ["pending", "approved", "paused", "declined"], default: "pending" },
+    status: { type: String, enum: ["pending", "approved", "paused", "ended", "declined"], default: "pending" },
     notes: { type: String, default: "", maxlength: 2000 },
     source: { type: String, default: "", trim: true, maxlength: 60 },
+    // Partner portal (magic-link sign-in, uploads, checklist, agreement, payment)
+    portal: { type: partnerPortalSchema, default: () => ({}) },
   },
   { timestamps: true }
 );

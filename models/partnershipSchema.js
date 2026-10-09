@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import partnerPortalSchema from "./partnerPortalSchema.js";
 
 const partnershipSchema = new mongoose.Schema({
     companyName: { 
@@ -46,6 +47,8 @@ const partnershipSchema = new mongoose.Schema({
         default: "pending" 
     },
     adminNotes: { type: String, default: "", trim: true }, // private notes from the dashboard
+    // Partner portal (magic-link sign-in, uploads, checklist, agreement, payment)
+    portal: { type: partnerPortalSchema, default: () => ({}) },
 }, { timestamps: true });
 
 export default mongoose.model("Partnership", partnershipSchema);

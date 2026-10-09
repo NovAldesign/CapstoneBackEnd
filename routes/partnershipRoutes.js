@@ -63,7 +63,7 @@ router.post('/', async (req, res) => {
       // EMAIL A: Send to your dedicated partnerships inbox
       await resend.emails.send({
         from: 'GFC Partnership Portal <noreply@grownfolkscollective.com>',
-        to: 'partnerships@grownfolkscollective.com', // Separated destination address
+        to: 'partners@grownfolkscollective.com', // Separated destination address
         subject: `New Strategic Proposal: ${companyName} (${tierRequested})`,
         html: `
           <div style="font-family:sans-serif;max-width:600px;margin:auto;color:#002147;">
@@ -84,7 +84,7 @@ router.post('/', async (req, res) => {
 
       // EMAIL B: Send corporate confirmation receipt to the partner applicant
       await resend.emails.send({
-        from: 'Grown Folks Collective <partnerships@grownfolkscollective.com>', // Branded sender
+        from: 'Grown Folks Collective <partners@grownfolkscollective.com>', // Branded sender
         to: email,
         subject: 'Your Partnership Inquiry — Grown Folks Collective',
         html: `
@@ -96,7 +96,7 @@ router.post('/', async (req, res) => {
             <p style="color:#888;font-size:13px;">
               <strong>Grown Folks Collective</strong><br />
               Atlanta & Surrounding Cities<br />
-              <a href="mailto:partnerships@grownfolkscollective.com" style="color:#C5A059;">partnerships@grownfolkscollective.com</a>
+              <a href="mailto:partners@grownfolkscollective.com" style="color:#C5A059;">partners@grownfolkscollective.com</a>
             </p>
           </div>
         `,

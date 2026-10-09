@@ -40,6 +40,8 @@ import doorRoutes from "./routes/doorRoutes.js"; // Door check-in link for volun
 import shopRoutes from "./routes/shopRoutes.js"; // Holiday Passes, gift cards, merch pre-orders
 import memberRoutes from "./routes/memberRoutes.js"; // Member magic-link login + dashboard
 import { runCreditUpkeep } from "./utilities/memberCredit.js";
+import partnerPortalRoutes from "./routes/partnerPortalRoutes.js";
+import { runPartnerReminders } from "./utilities/partnerPortal.js";
 import { deliverScheduledGifts } from "./utilities/giftCards.js";
 
 const app  = express();
@@ -111,7 +113,7 @@ app.use((req, res, next) => {
 // -------------------------------------------------------
 // 6. GLOBAL JSON PARSERS (Safe now that webhooks are bypassed/handled)
 // -------------------------------------------------------
-app.use(express.json());
+app.use(express.json({ limit: "300kb" })); // room for small logo images
 app.use(express.urlencoded({ extended: true }));
 
 // -------------------------------------------------------
@@ -138,6 +140,7 @@ app.use("/api/admin-hub", protect, restrictTo("admin"), adminHubRoutes);
 app.use("/api/door", doorRoutes);
 app.use("/api/shop", shopRoutes);
 app.use("/api/member", memberRoutes);
+app.use("/api/partner", partnerPortalRoutes);
 
 // -------------------------------------------------------
 // 8. STRIPE CANCEL REDIRECT LAYER
@@ -203,6 +206,11 @@ const startServer = async () => {
       const runCredit = () => runCreditUpkeep().catch((e) => console.error("Member credit upkeep:", e.message));
       runCredit();
       setInterval(runCredit, 6 * 60 * 60 * 1000);
+
+      // Partner portal: reminder emails for missing items (checks every 6 hours, sends every 4 days at most)
+      const runPartners = () => runPartnerReminders().catch((e) => console.error("Partner reminders:", e.message));
+      setTimeout(runPartners, 5 * 60 * 1000);
+      setInterval(runPartners, 6 * 60 * 60 * 1000);
     } catch (err) {
       console.error("❌ Deferred Database Connection Error:", err.message);
     }

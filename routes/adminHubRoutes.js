@@ -470,7 +470,7 @@ router.get("/list/:kind", async (req, res) => {
   try {
     const box = INBOXES[req.params.kind];
     if (!box) return res.status(404).json({ error: "Unknown list." });
-    const items = await box.model.find().sort({ createdAt: -1 }).limit(500).lean();
+    const items = await box.model.find().sort({ createdAt: -1 }).limit(500).select("-portal.loginTokenHash -portal.loginTokenExpires").lean();
     res.json({ statuses: box.statuses, items });
   } catch (err) {
     console.error("Admin list error:", err.message);
@@ -488,7 +488,7 @@ router.patch("/list/:kind/:id", async (req, res) => {
       update.status = req.body.status;
     }
     if (typeof req.body?.adminNotes === "string" && req.params.kind !== "messages") update.adminNotes = clean(req.body.adminNotes, 2000);
-    const item = await box.model.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true }).lean();
+    const item = await box.model.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true }).select("-portal.loginTokenHash -portal.loginTokenExpires").lean();
     if (!item) return res.status(404).json({ error: "Not found." });
     res.json({ item });
   } catch (err) {

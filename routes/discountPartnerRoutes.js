@@ -182,7 +182,7 @@ router.get("/", async (req, res) => {
 ------------------------------------------------------- */
 router.get("/admin", protect, restrictTo("admin"), async (req, res) => {
   try {
-    const all = await DiscountPartner.find().sort({ createdAt: -1 }).lean();
+    const all = await DiscountPartner.find().sort({ createdAt: -1 }).select("-portal.loginTokenHash -portal.loginTokenExpires").lean();
     res.json(all);
   } catch (err) {
     res.status(500).json({ error: "Couldn't load submissions." });
@@ -192,7 +192,7 @@ router.get("/admin", protect, restrictTo("admin"), async (req, res) => {
 router.patch("/admin/:id", protect, restrictTo("admin"), async (req, res) => {
   try {
     const update = {};
-    if (req.body.status) update.status = pick(req.body.status, ["pending", "approved", "paused", "declined"], "pending");
+    if (req.body.status) update.status = pick(req.body.status, ["pending", "approved", "paused", "ended", "declined"], "pending");
     if (req.body.notes !== undefined) update.notes = clean(req.body.notes, 2000);
     if (req.body.logo !== undefined) {
       const logo = String(req.body.logo || "");
@@ -201,7 +201,7 @@ router.patch("/admin/:id", protect, restrictTo("admin"), async (req, res) => {
       }
       update.logo = logo; // "" removes it
     }
-    const doc = await DiscountPartner.findByIdAndUpdate(req.params.id, update, { new: true });
+    const doc = await DiscountPartner.findByIdAndUpdate(req.params.id, update, { new: true }).select("-portal.loginTokenHash -portal.loginTokenExpires");
     if (!doc) return res.status(404).json({ error: "Not found." });
     res.json(doc);
   } catch (err) {
