@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import { Resend } from "resend";
 import Membership, { INTEREST_OPTIONS } from "../models/membershipSchema.js";
 import DiscountPartner from "../models/discountPartnerSchema.js";
+import MemberCredit from "../models/memberCreditSchema.js";
 import { protect, restrictTo } from "../middleware/authMiddleware.js";
 import { creditSummary, grantCredit, MONTHLY_CREDIT_CENTS } from "../utilities/memberCredit.js";
 
@@ -523,6 +524,76 @@ router.post("/admin/credit", protect, restrictTo("admin"), async (req, res) => {
   } catch (err) {
     console.error("Admin credit error:", err);
     res.status(500).json({ error: "Couldn't add credit." });
+  }
+});
+
+/* -------------------------------------------------------
+   Test member — Admin only
+   POST   /api/member/admin/test-member  Body: { email, tier }
+          Makes (or resets) a fake active member that is never billed,
+          with one month of credit, so you can log in at /login and test.
+   DELETE /api/member/admin/test-member  Body: { email }
+------------------------------------------------------- */
+router.post("/admin/test-member", protect, restrictTo("admin"), async (req, res) => {
+  try {
+    const email = clean(req.body.email).toLowerCase();
+    if (!isEmail(email)) return res.status(400).json({ error: "Enter an email inbox you can open." });
+    const tier = req.body.tier === "Social" ? "Social" : "Founding";
+
+    let member = await Membership.findOne({ email });
+    if (member && !member.isTest) {
+      return res.status(409).json({ error: "That email belongs to a real member. Use a different inbox for testing." });
+    }
+    if (member) await MemberCredit.deleteMany({ member: member._id });
+    else {
+      member = new Membership({
+        firstName: "Test",
+        lastName: "Member",
+        email,
+        phone: `000-000-${String(Date.now()).slice(-4)}`,
+        dob: new Date("1985-06-15T12:00:00Z"),
+        tier,
+        isTest: true,
+        connectionGoals: { primaryInterest: "Play / Games", isolationBarrier: "TEST ACCOUNT" },
+      });
+    }
+    const now = new Date();
+    Object.assign(member, {
+      tier,
+      status: "active",
+      paidAt: member.paidAt || now,
+      currentPeriodEnd: addMonths(now, 1),
+      pausedUntil: null,
+      cancelAtPeriodEnd: false,
+    });
+    await member.save({ validateBeforeSave: false });
+
+    await grantCredit({
+      memberId: member._id,
+      type: "earned",
+      cents: MONTHLY_CREDIT_CENTS[tier],
+      expiresAt: addMonths(now, 2),
+      note: "Test credit",
+      key: `test:${member._id}:${crypto.randomUUID()}`,
+    });
+    res.status(201).json({ ok: true, email, tier, summary: await creditSummary(member._id) });
+  } catch (err) {
+    console.error("Test member error:", err);
+    res.status(500).json({ error: "Couldn't create the test member." });
+  }
+});
+
+router.delete("/admin/test-member", protect, restrictTo("admin"), async (req, res) => {
+  try {
+    const email = clean(req.body.email).toLowerCase();
+    const member = await Membership.findOne({ email, isTest: true });
+    if (!member) return res.status(404).json({ error: "No test member with that email." });
+    await MemberCredit.deleteMany({ member: member._id });
+    await member.deleteOne();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Delete test member error:", err);
+    res.status(500).json({ error: "Couldn't delete the test member." });
   }
 });
 

@@ -22,6 +22,9 @@ const membershipSchema = new mongoose.Schema({
   stripeSubscriptionId: { type: String, default: "" },
   paidAt: { type: Date, default: null },
 
+  // Test account made from the admin dashboard (never billed; safe to delete)
+  isTest: { type: Boolean, default: false },
+
   // Kept in sync with Stripe so the dashboard can show them
   pausedUntil: { type: Date, default: null },      // pause ends and billing restarts
   cancelAtPeriodEnd: { type: Boolean, default: false },
