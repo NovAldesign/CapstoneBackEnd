@@ -9,7 +9,7 @@ const resend = process.env.RESEND_API_KEY
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 
-const FREQUENCIES = ["One-time event", "Monthly series", "Biweekly series", "Weekly series"];
+const FREQUENCIES = ["One-time event", "Monthly series", "Biweekly series", "Weekly series", "Resident Package (2 events a month)"];
 
 const PACKAGES = [
   "Play. Sip. Toast. Game Night",
