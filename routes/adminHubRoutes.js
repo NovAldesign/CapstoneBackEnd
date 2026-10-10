@@ -140,8 +140,10 @@ router.get("/showcases", async (req, res) => {
     const since = new Date(Date.now() - 45 * DAY);
     const events = (await Event.find({ status: { $ne: "cancelled" }, date: { $gte: since } })
       .sort({ date: 1 })
-      .select("name date capacity ticketTypes status")
+      .select("name date capacity ticketTypes status eventbriteId")
       .lean()).filter((e) => MUSIC_EVENT.test(e.name || ""));
+    // Showcases with website ticket orders (a copy with none can be removed)
+    const ordered = new Set((await TicketOrder.distinct("items.eventId", { status: "paid" })).map(String));
 
     const apps = await ArtistApplication.find({ status: { $in: ["pending", "approved"] } })
       .sort({ createdAt: 1 })
@@ -198,6 +200,9 @@ router.get("/showcases", async (req, res) => {
           past: new Date(e.date) < new Date(),
           sold: soldFor(e),
           capacity: capacityFor(e),
+          eventbrite: Boolean(e.eventbriteId),
+          // Empty copy (no tickets, nobody booked or applied): safe to remove
+          removable: soldFor(e) === 0 && !ordered.has(id) && !apps.some((a) => String(a.eventId) === id),
           artists: booked.filter((p) => p.role !== "host"),
           hosts: booked.filter((p) => p.role === "host"),
           applicants: apps.filter((a) => a.status === "pending" && String(a.eventId) === id).map(person),
@@ -209,6 +214,27 @@ router.get("/showcases", async (req, res) => {
   } catch (err) {
     console.error("Admin showcases error:", err.message);
     res.status(500).json({ error: "Couldn't load showcases." });
+  }
+});
+
+// Remove an empty duplicate showcase (sets it to cancelled so it disappears everywhere)
+router.post("/showcases/:id/remove", async (req, res) => {
+  try {
+    if (!isId(req.params.id)) return res.status(404).json({ error: "Not found." });
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ error: "Not found." });
+    const id = String(event._id);
+    const hasPeople = await ArtistApplication.exists({ eventId: id, status: { $in: ["pending", "approved"] } });
+    const hasOrders = await TicketOrder.exists({ "items.eventId": id, status: "paid" });
+    if (soldFor(event) > 0 || hasPeople || hasOrders) {
+      return res.status(400).json({ error: "This showcase has tickets or performers, so it can't be removed here." });
+    }
+    event.status = "cancelled";
+    await event.save({ validateBeforeSave: false });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Remove showcase error:", err.message);
+    res.status(500).json({ error: "Couldn't remove it." });
   }
 });
 
