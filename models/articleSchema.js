@@ -29,6 +29,12 @@ const articleSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  imageAlt: { type: String, default: '' },
+  imageCaption: { type: String, default: '' },
+  // Tall image for the "Save to Pinterest" button (1000 x 1500)
+  pinImageUrl: { type: String, default: '' },
+  // Shows the affiliate disclosure at the top of the post
+  affiliate: { type: Boolean, default: false },
   publishedAt: {
     type: Date,
     default: Date.now
