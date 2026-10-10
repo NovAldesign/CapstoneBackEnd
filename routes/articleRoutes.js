@@ -1,5 +1,6 @@
 import express from 'express';
 import Article from '../models/articleSchema.js'; // Explicit .js extension required in ES Modules
+import jwt from 'jsonwebtoken';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -26,21 +27,45 @@ const pick = (body) => {
   return out;
 };
 
-// GET all articles
+// Is the caller a signed-in admin? (lets admins preview scheduled posts)
+const isAdmin = (req) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return false;
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET)?.role?.toLowerCase() === 'admin';
+  } catch {
+    return false;
+  }
+};
+
+// GET all published articles (scheduled posts stay hidden until their publish date)
 router.get('/', async (req, res) => {
   try {
-    const articles = await Article.find().sort({ publishedAt: -1 });
+    const articles = await Article.find({ publishedAt: { $lte: new Date() } }).sort({ publishedAt: -1 });
     res.json(articles);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// GET single article by slug
+// GET every article, including scheduled ones — Admin only
+router.get('/admin/all', protect, restrictTo('admin'), async (req, res) => {
+  try {
+    const articles = await Article.find().sort({ publishedAt: -1 });
+    res.json(articles);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET single article by slug (scheduled posts only show to admins, as a preview)
 router.get('/:slug', async (req, res) => {
   try {
     const article = await Article.findOne({ slug: req.params.slug });
     if (!article) return res.status(404).json({ message: 'Article not found' });
+    if (article.publishedAt > new Date() && !isAdmin(req)) {
+      return res.status(404).json({ message: 'Article not found' });
+    }
     res.json(article);
   } catch (err) {
     res.status(500).json({ message: err.message });
