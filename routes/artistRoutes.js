@@ -1,4 +1,4 @@
-import express from "express";
+gimport express from "express";
 import crypto from "crypto";
 import mongoose from "mongoose";
 import multer from "multer";
@@ -33,6 +33,7 @@ export const ARTIST_TERMS = [
   "Bring all my own equipment (mic, amp, instrument, cables).",
   "Arrive 1 hour before doors for setup and sound check.",
   "Tag @grownfolkscollective when I promote the show.",
+  "Be featured: GFC shares my name, photo, bio, music links, and photos and video of my set to promote the show and future showcases. Guests may also photograph, record, or go live.",
   "Follow the Performer Agreement, Code of Conduct, and Participation Waiver, including the showcase rules and release.",
 ];
 
@@ -44,6 +45,7 @@ export const HOST_TERMS = [
   "Arrive 1 hour before doors to walk through the run of show.",
   "Welcome the room, introduce each artist, and keep the night moving.",
   "Tag @grownfolkscollective when I promote the show.",
+  "Be featured: GFC shares my name, photo, bio, links, and photos and video of my hosting to promote the show and future showcases. Guests may also photograph, record, or go live.",
   "Follow the Performer Agreement, Code of Conduct, and Participation Waiver, including the showcase rules and release.",
 ];
 
@@ -207,7 +209,7 @@ router.post("/apply", async (req, res) => {
       payoutHandle: clean(b.payoutHandle, 120),
       termsAccepted: true,
       agreementVersion: clean(b.agreementVersion, 40),
-      featureConsent: Boolean(b.featureConsent),
+      featureConsent: true, // being featured is part of the agreement (Performer Agreement 2026-10-10)
       signatureName,
       signedAt: new Date(),
       reviewToken: crypto.randomBytes(24).toString("hex"),
