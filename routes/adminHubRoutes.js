@@ -254,8 +254,10 @@ router.patch("/applications/:id", async (req, res) => {
       application.payoutAmount = b.paid ? Math.max(0, Math.min(1000, Number(b.amount) || 0)) : 0;
     }
     if (typeof b.adminNotes === "string") application.adminNotes = clean(b.adminNotes, 1000);
+    // Fix typos in what shows on the event page (Meet the Artists)
+    if (typeof b.bio === "string") application.bio = clean(b.bio, 600);
     await application.save();
-    res.json({ ok: true, payoutPaidAt: application.payoutPaidAt, payoutAmount: application.payoutAmount, adminNotes: application.adminNotes });
+    res.json({ ok: true, payoutPaidAt: application.payoutPaidAt, payoutAmount: application.payoutAmount, adminNotes: application.adminNotes, bio: application.bio });
   } catch (err) {
     console.error("Admin application update error:", err.message);
     res.status(500).json({ error: "Couldn't save. Please try again." });
