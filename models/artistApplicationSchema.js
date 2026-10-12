@@ -4,8 +4,8 @@ import mongoose from "mongoose";
 // Approved artists (with permission) appear in "Meet the Artists" on the event page.
 const artistApplicationSchema = new mongoose.Schema(
   {
-    // "artist" = singer or musician · "host" = runs the night (MC)
-    role: { type: String, enum: ["artist", "host"], default: "artist" },
+    // "artist" = singer or musician · "Live Visual Artist" = painter, sketch artist
+    role: { type: String, enum: ["Artist", "live Visual Artist"], default: "artist" },
 
     // Private contact info
     firstName: { type: String, required: true, trim: true },
