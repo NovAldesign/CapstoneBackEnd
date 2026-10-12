@@ -571,6 +571,27 @@ router.get("/events", async (req, res) => {
   }
 });
 
+// Real ticket totals (website + Eventbrite + added by hand) for the Events list
+router.get("/events/totals", async (req, res) => {
+  try {
+    const ids = String(req.query.ids || "").split(",").filter(isId).slice(0, 80);
+    if (!ids.length) return res.json({ totals: {} });
+    const events = await Event.find({ _id: { $in: ids } }).select("name date eventbriteId capacity ticketTypes").lean();
+    const rows = await mapLimit(events, 4, async (e) => {
+      try {
+        const list = await buildGuestList(e);
+        return [String(e._id), { tickets: list.totals.tickets, paidCents: list.totals.paidCents, eventbriteOk: list.eventbrite.ok !== false }];
+      } catch {
+        return [String(e._id), null];
+      }
+    });
+    res.json({ totals: Object.fromEntries(rows.filter(([, v]) => v)) });
+  } catch (err) {
+    console.error("Admin event totals error:", err.message);
+    res.status(500).json({ error: "Couldn't load ticket totals." });
+  }
+});
+
 const findEvent = async (id) =>
   isId(id) ? Event.findById(id).select("name date endDate location eventbriteId capacity ticketTypes").lean() : null;
 
