@@ -548,8 +548,8 @@ router.get("/events", async (req, res) => {
     const now = new Date();
     const dayAgo = new Date(Date.now() - DAY);
     const query = past
-      ? { status: { $ne: "cancelled" }, date: { $lt: dayAgo, $gte: new Date(Date.now() - 180 * DAY) } }
-      : { status: { $ne: "cancelled" }, date: { $gte: dayAgo } };
+      ? { status: { $nin: ["cancelled", "draft"] }, date: { $lt: dayAgo, $gte: new Date(Date.now() - 180 * DAY) } }
+      : { status: { $nin: ["cancelled", "draft"] }, date: { $gte: dayAgo } };
     const events = await Event.find(query).sort({ date: past ? -1 : 1 }).limit(60)
       .select("name date capacity ticketTypes status eventbriteId location").lean();
     res.json({
@@ -576,7 +576,7 @@ router.get("/events/totals", async (req, res) => {
   try {
     const ids = String(req.query.ids || "").split(",").filter(isId).slice(0, 80);
     if (!ids.length) return res.json({ totals: {} });
-    const events = await Event.find({ _id: { $in: ids } }).select("name date eventbriteId capacity ticketTypes").lean();
+    const events = await Event.find({ _id: { $in: ids } }).select("name date eventbriteId capacity ticketTypes status").lean();
     const rows = await mapLimit(events, 4, async (e) => {
       try {
         const list = await buildGuestList(e);
@@ -593,7 +593,7 @@ router.get("/events/totals", async (req, res) => {
 });
 
 const findEvent = async (id) =>
-  isId(id) ? Event.findById(id).select("name date endDate location eventbriteId capacity ticketTypes").lean() : null;
+  isId(id) ? Event.findById(id).select("name date endDate location eventbriteId capacity ticketTypes status").lean() : null;
 
 router.get("/events/:id/guests", async (req, res) => {
   try {
@@ -687,9 +687,10 @@ router.get("/reports", async (req, res) => {
   try {
     const from = YMD_RE.test(req.query.from || "") ? new Date(`${req.query.from}T00:00:00-04:00`) : new Date(Date.now() - 30 * DAY);
     const to = YMD_RE.test(req.query.to || "") ? new Date(`${req.query.to}T23:59:59-04:00`) : new Date();
-    const events = await Event.find({ status: { $ne: "cancelled" }, date: { $gte: from, $lte: to } })
+    // Drafts are left out: a draft copy's buyers are counted on its published event
+    const events = await Event.find({ status: { $nin: ["cancelled", "draft"] }, date: { $gte: from, $lte: to } })
       .sort({ date: 1 }).limit(60)
-      .select("name date capacity ticketTypes eventbriteId").lean();
+      .select("name date capacity ticketTypes eventbriteId status").lean();
 
     const now = Date.now();
     const rows = await mapLimit(events, 4, async (e) => {

@@ -2,6 +2,7 @@ import crypto from "crypto";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import GuestEntry from "../models/guestEntrySchema.js";
 import CheckIn from "../models/checkInSchema.js";
+import Event from "../models/eventSchema.js";
 
 // ── One guest list per event, from every place tickets are sold ──
 //   website   = paid website orders (TicketOrder), with the ?src= tag and code they used
@@ -71,21 +72,54 @@ export const fetchEventbriteOrders = async (eventbriteId) => {
 
 export const clearEventbriteCache = (eventbriteId) => ebCache.delete(eventbriteId);
 
-// The whole guest list for one event
+// ── Copies of the same event ──
+// Eventbrite drafts and copies get saved as their own events. Buyers can end up
+// on a copy, so a published event's guest list also pulls in any draft or
+// cancelled copy on the same day with a similar name.
+const STOP = new Set(["gfc", "grown", "folks", "collective", "the", "and", "of", "a", "at", "30", "edition", "new", "copy"]);
+const words = (name = "") => new Set(String(name).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w)));
+const similar = (a, b) => {
+  const A = words(a), B = words(b);
+  if (!A.size || !B.size) return false;
+  let shared = 0;
+  A.forEach((w) => { if (B.has(w)) shared += 1; });
+  return shared / Math.min(A.size, B.size) >= 0.5;
+};
+
+export const findCopies = async (event) => {
+  if (!event?.date || ["draft", "cancelled"].includes(event.status)) return [];
+  const t = new Date(event.date).getTime();
+  const near = await Event.find({
+    _id: { $ne: event._id },
+    status: { $in: ["draft", "cancelled"] },
+    date: { $gte: new Date(t - 14 * 3600000), $lte: new Date(t + 14 * 3600000) },
+  }).select("name date status eventbriteId").lean();
+  return near.filter((e) => similar(e.name, event.name));
+};
+
+// The whole guest list for one event (plus any copies of it)
 export const buildGuestList = async (event, { includeEventbrite = true } = {}) => {
   const eventId = String(event._id);
-  const [orders, manual, checkIns, eb] = await Promise.all([
-    TicketOrder.find({ status: "paid", "items.eventId": eventId }).sort({ createdAt: 1 }).lean(),
-    GuestEntry.find({ eventId }).sort({ createdAt: 1 }).lean(),
+  const copies = await findCopies(event);
+  const ids = [eventId, ...copies.map((c) => String(c._id))];
+  const ebIds = [...new Set([event.eventbriteId, ...copies.map((c) => c.eventbriteId)].filter(Boolean).map(String))];
+  const [orders, manual, checkIns, ebLists] = await Promise.all([
+    TicketOrder.find({ status: "paid", "items.eventId": { $in: ids } }).sort({ createdAt: 1 }).lean(),
+    GuestEntry.find({ eventId: { $in: ids } }).sort({ createdAt: 1 }).lean(),
     CheckIn.find({ eventId }).lean(),
-    includeEventbrite ? fetchEventbriteOrders(event.eventbriteId) : Promise.resolve({ ok: true, orders: [] }),
+    includeEventbrite ? Promise.all(ebIds.map((id) => fetchEventbriteOrders(id))) : Promise.resolve([]),
   ]);
+  const eb = {
+    ok: ebLists.every((l) => l.ok),
+    error: ebLists.find((l) => !l.ok)?.error || "",
+    orders: ebLists.flatMap((l) => l.orders),
+  };
   const checked = new Map(checkIns.map((c) => [c.key, c]));
 
   const guests = [];
   orders.forEach((o) => {
     (o.items || []).forEach((item, i) => {
-      if (String(item.eventId) !== eventId) return;
+      if (!ids.includes(String(item.eventId))) return;
       const key = `web:${o._id}:${i}`;
       guests.push({
         key,
@@ -164,7 +198,9 @@ export const buildGuestList = async (event, { includeEventbrite = true } = {}) =
       orders: guests.length,
       bySource,
     },
-    eventbrite: { connected: Boolean(event.eventbriteId), ok: eb.ok, error: eb.error || "" },
+    eventbrite: { connected: ebIds.length > 0, ok: eb.ok, error: eb.error || "" },
+    // Copies whose guests were added to this list
+    mergedFrom: copies.map((c) => ({ id: String(c._id), name: c.name, status: c.status })),
   };
 };
 

@@ -17,7 +17,7 @@ const loadEvent = async (req, res) => {
     res.status(403).json({ error: "This check-in link isn't valid. Ask Vaughn for a new one." });
     return null;
   }
-  const event = await Event.findById(eventId).select("name date endDate location eventbriteId").lean();
+  const event = await Event.findById(eventId).select("name date endDate location eventbriteId status").lean();
   if (!event) {
     res.status(404).json({ error: "Event not found." });
     return null;
