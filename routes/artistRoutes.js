@@ -49,9 +49,26 @@ export const HOST_TERMS = [
   "Follow the Performer Agreement, Code of Conduct, and Participation Waiver, including the showcase rules and release.",
 ];
 
-const isHost = (application) => application?.role === "host";
-const termsFor = (application) => (isHost(application) ? HOST_TERMS : ARTIST_TERMS);
-const roleWord = (application) => (isHost(application) ? "Host" : "Artist");
+// The terms live visual artists agree to (also shown on /perform/art)
+export const VISUAL_TERMS = [
+  "Sell at least 5 tickets using my personal ticket link.",
+  "I'm paid $15 for every ticket sold with my link, up to $75, within 3–5 business days after the show via Zelle or Cash App.",
+  "Have at least 3 tickets sold one week before the show to hold my spot.",
+  "Bring all my own supplies, including my easel, canvas, paints, and a drop cloth. No spray paint or solvents.",
+  "Arrive 1 hour before doors to set up.",
+  "Create my piece live in the room during the show, and handle my own art and merch sales.",
+  "Tag @grownfolkscollective when I promote the show.",
+  "Be featured: GFC shares my name, photo, bio, links, and photos and video of me and my artwork to promote the show and future showcases. Guests may also photograph, record, or go live.",
+  "Follow the Performer Agreement, Code of Conduct, and Participation Waiver, including the showcase rules and release.",
+];
+
+const ROLES = ["artist", "host", "visual"];
+const roleOf = (application) => (ROLES.includes(application?.role) ? application.role : "artist");
+const isHost = (application) => roleOf(application) === "host";
+const isVisual = (application) => roleOf(application) === "visual";
+const termsFor = (application) => ({ host: HOST_TERMS, visual: VISUAL_TERMS, artist: ARTIST_TERMS }[roleOf(application)]);
+const roleWord = (application) => ({ host: "Host", visual: "Live Artist", artist: "Artist" }[roleOf(application)]);
+const roleEmoji = (application) => ({ host: "🎙️", visual: "🎨", artist: "🎤" }[roleOf(application)]);
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -91,7 +108,7 @@ router.get("/upload-signature", (req, res) => {
    Full = enough APPROVED artists (or a host) for that showcase.
    MUST match ARTIST_SLOTS in src/Components/admin/AdminShowcases.jsx
 ------------------------------------------------------- */
-export const SHOWCASE_SLOTS = { artist: 3, host: 1 };
+export const SHOWCASE_SLOTS = { artist: 3, host: 1, visual: 1 };
 const SHOWCASE_EVENT = /showcase|live music|acoustic|open mic|concert|jam session/i;
 
 const showcaseAvailability = async () => {
@@ -109,12 +126,14 @@ const showcaseAvailability = async () => {
     const id = String(e._id);
     const artists = count(id, "artist");
     const hosts = count(id, "host");
+    const visuals = count(id, "visual");
     return {
       _id: id,
       name: e.name,
       date: e.date,
       artistSpotsLeft: Math.max(0, SHOWCASE_SLOTS.artist - artists),
       hostSpotsLeft: Math.max(0, SHOWCASE_SLOTS.host - hosts),
+      visualSpotsLeft: Math.max(0, SHOWCASE_SLOTS.visual - visuals),
     };
   });
 };
@@ -138,7 +157,7 @@ router.get("/showcases", async (req, res) => {
 router.post("/apply", async (req, res) => {
   try {
     const b = req.body || {};
-    const role = b.role === "host" ? "host" : "artist";
+    const role = ROLES.includes(b.role) ? b.role : "artist";
     const firstName = clean(b.firstName, 60);
     const lastName = clean(b.lastName, 60);
     const email = clean(b.email, 120).toLowerCase();
@@ -161,9 +180,12 @@ router.post("/apply", async (req, res) => {
       .map((l) => clean(l, 300))
       .filter(isHttpUrl)
       .slice(0, 4);
-    // Artists need a performance link; for hosts a video is optional
+    // Artists need a performance link and live artists a link to their work; for hosts a video is optional
     if (role === "artist" && !performanceLinks.length) {
       return res.status(400).json({ error: "Please add at least one link to a performance video or song." });
+    }
+    if (role === "visual" && !performanceLinks.length) {
+      return res.status(400).json({ error: "Please add at least one link to your work (portfolio, Instagram, or a video of you creating)." });
     }
     if (b.termsAccepted !== true) {
       return res.status(400).json({ error: `Please check every box to agree to the ${role} terms.` });
@@ -174,7 +196,8 @@ router.post("/apply", async (req, res) => {
     // A full showcase can't take new applications (they can still pick "Any upcoming showcase")
     if (mongoose.Types.ObjectId.isValid(String(b.eventId || ""))) {
       const spot = (await showcaseAvailability()).find((s) => s._id === String(b.eventId));
-      if (spot && (role === "host" ? spot.hostSpotsLeft : spot.artistSpotsLeft) <= 0) {
+      const left = { host: spot?.hostSpotsLeft, visual: spot?.visualSpotsLeft, artist: spot?.artistSpotsLeft }[role];
+      if (spot && left <= 0) {
         return res.status(400).json({
           error: `That showcase just filled up. Please pick another date or "Any upcoming showcase" and we'll match you with the next one.`,
         });
@@ -229,7 +252,7 @@ router.post("/apply", async (req, res) => {
           from: "GFC Artist Applications <noreply@grownfolkscollective.com>",
           to: TEAM_EMAIL,
           reply_to: application.email,
-          subject: `${isHost(application) ? "🎙️ Host" : "🎤 Artist"} application: ${application.artistName} (${application.eventName})`,
+          subject: `${roleEmoji(application)} ${roleWord(application)} application: ${application.artistName} (${application.eventName})`,
           html: `
             <div style="font-family:Arial,Helvetica,sans-serif;padding:20px;color:#002147;max-width:680px;">
               <h2 style="border-bottom:2px solid #C5A059;padding-bottom:10px;">New ${roleWord(application)} Application</h2>
@@ -241,15 +264,15 @@ router.post("/apply", async (req, res) => {
                 ${row("Email", escapeHtml(application.email))}
                 ${row("Phone", escapeHtml(application.phone))}
                 ${row("Showcase", escapeHtml(application.eventName))}
-                ${row("Genre", escapeHtml(application.genres))}
+                ${row(isVisual(application) ? "Medium" : "Genre", escapeHtml(application.genres))}
                 ${row("Hometown", escapeHtml(application.hometown))}
                 ${row("Bio", escapeHtml(application.bio))}
                 ${row("Photo", application.headshotUrl ? "✓ Uploaded" : `⚠️ None. <a href="${base}/photo?token=${application.reviewToken}" style="color:#9A7630;">Add a photo</a>`)}
-                ${row(isHost(application) ? "Hosting videos" : "Performances", linksHtml)}
+                ${row(isHost(application) ? "Hosting videos" : isVisual(application) ? "Their work" : "Performances", linksHtml)}
                 ${row("Instagram", application.instagram ? `@${escapeHtml(application.instagram)}` : "")}
                 ${row("TikTok", application.tiktok ? `@${escapeHtml(application.tiktok)}` : "")}
                 ${row("Other", escapeHtml(application.otherSocial))}
-                ${row("Equipment", escapeHtml(application.equipmentNotes))}
+                ${row(isVisual(application) ? "Bringing" : "Equipment", escapeHtml(application.equipmentNotes))}
                 ${row("Needs power outlet", application.needsPower ? "Yes" : "No")}
                 ${row("Payout", escapeHtml([application.payoutMethod, application.payoutHandle].filter(Boolean).join(": ")))}
                 ${row("Agreed to terms", "✅ Yes")}
@@ -273,15 +296,15 @@ router.post("/apply", async (req, res) => {
           from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
           to: application.email,
           reply_to: TEAM_EMAIL,
-          subject: `${application.artistName}, we got your application 🎶`,
+          subject: `${application.artistName}, we got your application ${isVisual(application) ? "🎨" : "🎶"}`,
           html: `
             <div style="font-family:Arial,Helvetica,sans-serif;padding:20px;color:#002147;max-width:600px;font-size:15px;line-height:1.6;">
               <h2>Thanks for applying, ${escapeHtml(application.firstName)}!</h2>
-              <p>We received your application to ${isHost(application) ? "host" : "perform at"} <strong>${escapeHtml(application.eventName)}</strong>.
+              <p>We received your application to ${isHost(application) ? "host" : isVisual(application) ? "create live at" : "perform at"} <strong>${escapeHtml(application.eventName)}</strong>.
                 We'll review it and get back to you within 3–5 business days.</p>
               <h3 style="border-bottom:2px solid #C5A059;padding-bottom:6px;">What you agreed to</h3>
               <ul>${termsFor(application).map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
-              ${isHost(application) ? "" : "<p>You keep 100% of your merch and tips. 🎤</p>"}
+              ${isHost(application) ? "" : isVisual(application) ? "<p>You keep 100% of your art sales, merch, and tips. 🎨</p>" : "<p>You keep 100% of your merch and tips. 🎤</p>"}
               <p>Questions? Just reply to this email.</p>
               <p>Warmly,<br/>Grown Folks Collective</p>
             </div>`,
@@ -423,22 +446,26 @@ const sendBookingEmail = async (application, event, code) => {
     to: application.email,
     bcc: TEAM_EMAIL,
     reply_to: TEAM_EMAIL,
-    subject: `${isHost(application) ? "You're hosting! 🎙️" : "You're booked! 🎤"} ${event.name} (${fmtShort(event.date)})`,
+    subject: `${isHost(application) ? "You're hosting! 🎙️" : isVisual(application) ? "You're booked! 🎨" : "You're booked! 🎤"} ${event.name} (${fmtShort(event.date)})`,
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
         <p>Hi ${escapeHtml(application.firstName)},</p>
         <p>${isHost(application)
           ? `You're officially the host for <strong>${escapeHtml(event.name)}</strong>! 🎙️ Here's everything you need.`
+          : isVisual(application)
+          ? `You're officially the live artist for <strong>${escapeHtml(event.name)}</strong>! 🎨 Here's everything you need.`
           : `You're officially on the lineup for <strong>${escapeHtml(event.name)}</strong>! 🎶 Here's everything you need.`}</p>
 
         ${h3("The Event")}
         <ul>
           <li><strong>Date:</strong> ${escapeHtml(fmtDay(event.date))}</li>
           <li><strong>Time:</strong> ${escapeHtml(fmtTime(event.date))}${event.endDate ? ` to ${escapeHtml(fmtTime(event.endDate))}` : ""}.
-            Please arrive by <strong>${escapeHtml(fmtTime(arrive))}</strong> ${isHost(application) ? "to walk through the run of show" : "for setup and sound check"}.</li>
+            Please arrive by <strong>${escapeHtml(fmtTime(arrive))}</strong> ${isHost(application) ? "to walk through the run of show" : isVisual(application) ? "to set up your easel and table" : "for setup and sound check"}.</li>
           <li><strong>Location:</strong> ${escapeHtml([loc.name, addressLine(loc)].filter(Boolean).join(", "))}</li>
           ${isHost(application)
             ? "<li><strong>Your role:</strong> welcome the room, introduce each artist, and keep the night moving. We'll send the run of show and the artist intros closer to the date.</li>"
+            : isVisual(application)
+            ? "<li><strong>Your role:</strong> create your piece live in the room while the music plays. Paint what the night sounds like. We provide a table for your art, merch, and tips.</li>"
             : `<li><strong>Your set:</strong> ${SET_MINUTES} minutes. We'll share the performance order closer to the date.</li>`}
         </ul>
 
@@ -458,7 +485,9 @@ const sendBookingEmail = async (application, event, code) => {
         ${h3("Your Pay")}
         <ul>
           <li><strong>$15 for every ticket sold with your link, up to $75</strong> for 5 tickets, paid within 3–5 business days after the show ${payout}.</li>
-          ${isHost(application) ? "" : "<li>Set up a merch table and a tip jar or QR code. <strong>You keep 100%</strong> of those sales.</li>"}
+          ${isHost(application) ? "" : isVisual(application)
+            ? "<li>Sell your original piece, prints, and merch at your table, with a tip jar or QR code. You handle your own sales and <strong>keep 100%</strong>.</li>"
+            : "<li>Set up a merch table and a tip jar or QR code. <strong>You keep 100%</strong> of those sales.</li>"}
         </ul>
 
         ${h3("Promotion")}
@@ -471,6 +500,8 @@ const sendBookingEmail = async (application, event, code) => {
         <ul>
           ${isHost(application)
             ? ""
+            : isVisual(application)
+            ? `<li>Bring all your own supplies: easel, canvas, paints, and a drop cloth. <strong>No spray paint or solvents.</strong>${application.needsPower ? " We noted you need a power outlet." : ""}</li>`
             : `<li>Bring all your own equipment (mic, amp, instrument, cables).${application.needsPower ? " We noted you need a power outlet." : ""}</li>`}
           <li>Questions or changes? Just reply to this email.</li>
         </ul>
@@ -487,7 +518,7 @@ router.get("/:id/review", async (req, res) => {
     const found = await findForReview(req);
     if (!found) return res.status(404).send(reviewPage("Invalid link", "<p>This review link isn't valid.</p>"));
     const { application, action } = found;
-    const name = escapeHtml(application.artistName) + (isHost(application) ? " (host)" : "");
+    const name = escapeHtml(application.artistName) + (isHost(application) ? " (host)" : isVisual(application) ? " (live artist)" : "");
 
     if (action === "decline") {
       return res.send(reviewPage(`Decline ${name}?`,

@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
 
-// Guests added by hand: tickets sold on Posh, Eventnoire or Meetup, comps, and walk-ins at the door
-export const GUEST_SOURCES = ["posh", "eventnoire", "meetup", "allevents", "door", "comp", "partner", "other"];
+// Guests added by hand: tickets sold on Posh, Eventnoire or Meetup, comps, and walk-ins at the door.
+// "scout" = industry scouts who signed up at /scouts (free ticket)
+export const GUEST_SOURCES = ["posh", "eventnoire", "meetup", "allevents", "door", "comp", "partner", "scout", "other"];
 
 const guestEntrySchema = new mongoose.Schema(
   {

@@ -12,6 +12,7 @@ import Contact from "../models/contactSchema.js";
 import Review from "../models/reviewSchema.js";
 import SelectApplication from "../models/selectApplicationSchema.js";
 import Subscriber from "../models/subscriberSchema.js";
+import Scout from "../models/scoutSchema.js";
 import Membership from "../models/membershipSchema.js";
 import { PROMO_CODES, normalizeCode, describePromo, isLive } from "../utilities/promoCodes.js";
 import { approveApplication, declineApplication } from "./artistRoutes.js";
@@ -83,7 +84,7 @@ router.get("/inbox", async (req, res) => {
         tab: "showcases",
         id: String(a._id),
         title: a.artistName,
-        detail: `${a.role === "host" ? "Wants to host" : "Wants to perform"} · ${a.eventName || "Any showcase"}`,
+        detail: `${a.role === "host" ? "Wants to host" : a.role === "visual" ? "Wants to create live art" : "Wants to perform"} · ${a.eventName || "Any showcase"}`,
         createdAt: a.createdAt,
       })),
       ...perks.map((p) => ({ type: "perk", tab: "perks", id: String(p._id), title: p.businessName, detail: p.offer, createdAt: p.createdAt })),
@@ -203,8 +204,9 @@ router.get("/showcases", async (req, res) => {
           eventbrite: Boolean(e.eventbriteId),
           // Empty copy (no tickets, nobody booked or applied): safe to remove
           removable: soldFor(e) === 0 && !ordered.has(id) && !apps.some((a) => String(a.eventId) === id),
-          artists: booked.filter((p) => p.role !== "host"),
+          artists: booked.filter((p) => p.role !== "host" && p.role !== "visual"),
           hosts: booked.filter((p) => p.role === "host"),
+          visuals: booked.filter((p) => p.role === "visual"),
           applicants: apps.filter((a) => a.status === "pending" && String(a.eventId) === id).map(person),
         };
       }),
@@ -522,6 +524,20 @@ router.patch("/list/:kind/:id", async (req, res) => {
   } catch (err) {
     console.error("Admin list update error:", err.message);
     res.status(500).json({ error: "Couldn't save." });
+  }
+});
+
+// Industry scouts (from /scouts), with the showcases they're on the list for
+router.get("/scouts", async (req, res) => {
+  try {
+    const items = await Scout.find().sort({ createdAt: -1 }).limit(5000).lean();
+    const ids = [...new Set(items.flatMap((s) => s.eventIds || []))].filter(isId);
+    const events = await Event.find({ _id: { $in: ids } }).select("name date").lean();
+    const byId = new Map(events.map((e) => [String(e._id), { id: String(e._id), name: e.name, date: e.date }]));
+    res.json({ items: items.map((s) => ({ ...s, showcases: (s.eventIds || []).map((id) => byId.get(id)).filter(Boolean) })) });
+  } catch (err) {
+    console.error("Admin scouts error:", err.message);
+    res.status(500).json({ error: "Couldn't load scouts." });
   }
 });
 
