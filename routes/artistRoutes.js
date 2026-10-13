@@ -738,6 +738,54 @@ router.post("/:id/photo", (req, res) => {
   });
 });
 
+/* -------------------------------------------------------
+   GET /api/artists/stage?role=artist|host|visual|all  — Public
+   "On Our Stage" gallery for the Perform pages: approved artists, hosts and
+   live artists who agreed to be featured, past and upcoming shows, newest first.
+------------------------------------------------------- */
+router.get("/stage", async (req, res) => {
+  try {
+    const role = ROLES.includes(req.query.role) ? req.query.role : "all";
+    const apps = await ArtistApplication.find({
+      status: "approved",
+      featureConsent: true,
+      galleryHidden: { $ne: true },
+      eventId: { $ne: "" },
+      ...(role === "all" ? {} : role === "artist" ? { role: { $in: ["artist", null] } } : { role }),
+    })
+      .select("role artistName genres hometown bio headshotUrl instagram tiktok performanceLinks eventId")
+      .lean();
+    const ids = [...new Set(apps.map((a) => a.eventId))].filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const events = await Event.find({ _id: { $in: ids } }).select("name date").lean();
+    const byId = new Map(events.map((e) => [String(e._id), e]));
+    const now = new Date();
+    const list = apps
+      .map((a) => ({ a, e: byId.get(a.eventId) }))
+      .filter(({ e }) => e)
+      .sort((x, y) => new Date(y.e.date) - new Date(x.e.date))
+      .slice(0, 24)
+      .map(({ a, e }) => ({
+        id: String(a._id),
+        role: a.role || "artist",
+        artistName: a.artistName,
+        genres: a.genres,
+        hometown: a.hometown,
+        bio: a.bio,
+        headshotUrl: a.headshotUrl,
+        instagram: a.instagram,
+        listenUrl: (a.performanceLinks || [])[0] || "",
+        showName: e.name,
+        showDate: e.date,
+        past: new Date(e.date) < now,
+      }));
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(list);
+  } catch (err) {
+    console.error("Stage gallery error:", err.message);
+    res.json([]);
+  }
+});
+
 router.get("/public", async (req, res) => {
   try {
     const eventId = String(req.query.eventId || "");

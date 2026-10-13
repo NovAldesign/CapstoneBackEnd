@@ -176,6 +176,7 @@ router.get("/showcases", async (req, res) => {
         payoutMethod: a.payoutMethod,
         payoutHandle: a.payoutHandle,
         featureConsent: a.featureConsent,
+        galleryHidden: Boolean(a.galleryHidden),
         code: a.promoCode,
         tickets,
         owed: Math.min(PAY_CAP, tickets * PAY_PER_TICKET),
@@ -284,8 +285,10 @@ router.patch("/applications/:id", async (req, res) => {
     if (typeof b.adminNotes === "string") application.adminNotes = clean(b.adminNotes, 1000);
     // Fix typos in what shows on the event page (Meet the Artists)
     if (typeof b.bio === "string") application.bio = clean(b.bio, 600);
+    // Show or hide them in the "On Our Stage" gallery on the Perform pages
+    if (typeof b.galleryHidden === "boolean") application.galleryHidden = b.galleryHidden;
     await application.save();
-    res.json({ ok: true, payoutPaidAt: application.payoutPaidAt, payoutAmount: application.payoutAmount, adminNotes: application.adminNotes, bio: application.bio });
+    res.json({ ok: true, payoutPaidAt: application.payoutPaidAt, payoutAmount: application.payoutAmount, adminNotes: application.adminNotes, bio: application.bio, galleryHidden: application.galleryHidden });
   } catch (err) {
     console.error("Admin application update error:", err.message);
     res.status(500).json({ error: "Couldn't save. Please try again." });

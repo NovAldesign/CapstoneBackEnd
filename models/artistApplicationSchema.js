@@ -56,6 +56,8 @@ const artistApplicationSchema = new mongoose.Schema(
     payoutPaidAt: { type: Date, default: null },
     payoutAmount: { type: Number, default: 0 }, // dollars
     adminNotes: { type: String, default: "", trim: true },
+    // Hide from the "On Our Stage" gallery on the Perform pages (still shows on their event page)
+    galleryHidden: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
