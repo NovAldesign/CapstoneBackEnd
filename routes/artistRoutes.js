@@ -82,6 +82,15 @@ const clean = (value, max = 200) => String(value || "").trim().slice(0, max);
 
 const isHttpUrl = (value) => /^https?:\/\/\S+$/i.test(String(value || ""));
 
+// "@name", "name", or "https://www.instagram.com/name/" → "name"
+export const socialHandle = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^https?:\/\/(www\.)?(instagram|tiktok)\.com\/@?/i, "")
+    .replace(/^@/, "")
+    .split(/[/?#\s]/)[0]
+    .slice(0, 60);
+
 const row = (label, value) =>
   `<tr>
     <td style="padding:6px 12px 6px 0;color:#666;vertical-align:top;">${label}</td>
@@ -220,8 +229,8 @@ router.post("/apply", async (req, res) => {
       hometown: clean(b.hometown, 80),
       bio: clean(b.bio, 600),
       headshotUrl: validHeadshot,
-      instagram: clean(b.instagram, 80).replace(/^@/, ""),
-      tiktok: clean(b.tiktok, 80).replace(/^@/, ""),
+      instagram: socialHandle(clean(b.instagram, 120)),
+      tiktok: socialHandle(clean(b.tiktok, 120)),
       otherSocial: clean(b.otherSocial, 300),
       performanceLinks,
       eventId: mongoose.Types.ObjectId.isValid(String(b.eventId || "")) ? String(b.eventId) : "",
@@ -746,6 +755,7 @@ router.post("/:id/photo", (req, res) => {
 router.get("/stage", async (req, res) => {
   try {
     const role = ROLES.includes(req.query.role) ? req.query.role : "all";
+    const limit = Math.max(1, Math.min(300, Number(req.query.limit) || 200));
     const apps = await ArtistApplication.find({
       status: "approved",
       featureConsent: true,
@@ -753,17 +763,24 @@ router.get("/stage", async (req, res) => {
       eventId: { $ne: "" },
       ...(role === "all" ? {} : role === "artist" ? { role: { $in: ["artist", null] } } : { role }),
     })
-      .select("role artistName genres hometown bio headshotUrl instagram tiktok performanceLinks eventId")
+      .select("role artistName genres hometown bio headshotUrl instagram tiktok performanceLinks eventId reviewedAt")
       .lean();
     const ids = [...new Set(apps.map((a) => a.eventId))].filter((id) => mongoose.Types.ObjectId.isValid(id));
     const events = await Event.find({ _id: { $in: ids } }).select("name date").lean();
     const byId = new Map(events.map((e) => [String(e._id), e]));
     const now = new Date();
+    // Upcoming shows first (soonest first), then past shows (most recent first).
+    // Within a show: host, then artists in booking order, then the live artist.
+    const showRank = (e) => (new Date(e.date) >= now ? new Date(e.date).getTime() : 1e15 - new Date(e.date).getTime());
+    const roleRank = { host: 0, artist: 1, visual: 2 };
     const list = apps
       .map((a) => ({ a, e: byId.get(a.eventId) }))
       .filter(({ e }) => e)
-      .sort((x, y) => new Date(y.e.date) - new Date(x.e.date))
-      .slice(0, 24)
+      .sort((x, y) =>
+        showRank(x.e) - showRank(y.e) ||
+        (roleRank[x.a.role || "artist"] ?? 1) - (roleRank[y.a.role || "artist"] ?? 1) ||
+        new Date(x.a.reviewedAt || 0) - new Date(y.a.reviewedAt || 0))
+      .slice(0, limit)
       .map(({ a, e }) => ({
         id: String(a._id),
         role: a.role || "artist",
@@ -772,8 +789,9 @@ router.get("/stage", async (req, res) => {
         hometown: a.hometown,
         bio: a.bio,
         headshotUrl: a.headshotUrl,
-        instagram: a.instagram,
+        instagram: socialHandle(a.instagram),
         listenUrl: (a.performanceLinks || [])[0] || "",
+        eventId: String(e._id),
         showName: e.name,
         showDate: e.date,
         past: new Date(e.date) < now,
@@ -808,8 +826,8 @@ router.get("/public", async (req, res) => {
         hometown: a.hometown,
         bio: a.bio,
         headshotUrl: a.headshotUrl,
-        instagram: a.instagram,
-        tiktok: a.tiktok,
+        instagram: socialHandle(a.instagram),
+        tiktok: socialHandle(a.tiktok),
         listenUrl: (a.performanceLinks || [])[0] || "",
       }))
     );
