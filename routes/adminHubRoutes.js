@@ -285,10 +285,16 @@ router.patch("/applications/:id", async (req, res) => {
     if (typeof b.adminNotes === "string") application.adminNotes = clean(b.adminNotes, 1000);
     // Fix typos in what shows on the event page (Meet the Artists)
     if (typeof b.bio === "string") application.bio = clean(b.bio, 600);
+    // Display name on the event page, emails and gallery (can't be blank)
+    if (typeof b.artistName === "string") {
+      const name = clean(b.artistName, 80);
+      if (!name) return res.status(400).json({ error: "Name can't be blank." });
+      application.artistName = name;
+    }
     // Show or hide them in the "On Our Stage" gallery on the Perform pages
     if (typeof b.galleryHidden === "boolean") application.galleryHidden = b.galleryHidden;
     await application.save();
-    res.json({ ok: true, payoutPaidAt: application.payoutPaidAt, payoutAmount: application.payoutAmount, adminNotes: application.adminNotes, bio: application.bio, galleryHidden: application.galleryHidden });
+    res.json({ ok: true, payoutPaidAt: application.payoutPaidAt, payoutAmount: application.payoutAmount, adminNotes: application.adminNotes, bio: application.bio, artistName: application.artistName, galleryHidden: application.galleryHidden });
   } catch (err) {
     console.error("Admin application update error:", err.message);
     res.status(500).json({ error: "Couldn't save. Please try again." });
