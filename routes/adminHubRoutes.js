@@ -14,6 +14,7 @@ import SelectApplication from "../models/selectApplicationSchema.js";
 import Subscriber from "../models/subscriberSchema.js";
 import Scout from "../models/scoutSchema.js";
 import Membership from "../models/membershipSchema.js";
+import CrmProfile from "../models/crmProfileSchema.js";
 import { PROMO_CODES, normalizeCode, describePromo, isLive } from "../utilities/promoCodes.js";
 import { approveApplication, declineApplication } from "./artistRoutes.js";
 import GuestEntry, { GUEST_SOURCES } from "../models/guestEntrySchema.js";
@@ -771,6 +772,178 @@ router.get("/reports", async (req, res) => {
   } catch (err) {
     console.error("Admin reports error:", err.message);
     res.status(500).json({ error: "Couldn't build the report." });
+  }
+});
+
+/* =======================================================
+   CRM: one profile per person (by email), built from every
+   place they show up, plus Vaughn's notes and Brevo checkbox
+======================================================= */
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+const CRM_TEXT = { nickname: 60, howWeMet: 200, referredBy: 120, birthday: 20, favoriteGame: 120, interests: 300, sideOfTown: 80 };
+const SOURCE_LABEL = {
+  ticket: "Ticket buyer", guest: "Guest list", subscriber: "Newsletter", member: "Member",
+  scout: "Industry scout", artist: "Performer", contact: "Contact form",
+};
+const normEmail = (e) => String(e || "").trim().toLowerCase();
+const profileOut = (p) => p ? {
+  addedToBrevo: Boolean(p.addedToBrevo), addedToBrevoAt: p.addedToBrevoAt || null,
+  nickname: p.nickname || "", howWeMet: p.howWeMet || "", referredBy: p.referredBy || "", birthday: p.birthday || "",
+  favoriteGame: p.favoriteGame || "", interests: p.interests || "", sideOfTown: p.sideOfTown || "",
+  tags: p.tags || [], notes: [...(p.notes || [])].sort((a, b) => new Date(b.at) - new Date(a.at)).map((n) => ({ id: String(n._id), text: n.text, at: n.at })),
+} : {
+  addedToBrevo: false, addedToBrevoAt: null, nickname: "", howWeMet: "", referredBy: "", birthday: "",
+  favoriteGame: "", interests: "", sideOfTown: "", tags: [], notes: [],
+};
+
+const buildPeople = async () => {
+  const people = new Map();
+  const touch = (email, { name = "", phone = "", source, at = null, birthday = "" }) => {
+    const key = normEmail(email);
+    if (!EMAIL_RE.test(key)) return null;
+    let p = people.get(key);
+    if (!p) { p = { email: key, name: "", phone: "", sources: new Set(), events: new Map(), lastSeen: null, firstSeen: null, memberBirthday: "" }; people.set(key, p); }
+    if (name && !p.name) p.name = String(name).trim();
+    if (phone && !p.phone) p.phone = String(phone).trim();
+    if (birthday && !p.memberBirthday) p.memberBirthday = birthday;
+    if (source) p.sources.add(source);
+    if (at) {
+      const d = new Date(at);
+      if (!p.lastSeen || d > p.lastSeen) p.lastSeen = d;
+      if (!p.firstSeen || d < p.firstSeen) p.firstSeen = d;
+    }
+    return p;
+  };
+  const addEvent = (p, { id, name, date, checkedIn = false, how }) => {
+    if (!p || !id) return;
+    const prev = p.events.get(id);
+    p.events.set(id, { id, name: name || prev?.name || "", date: date || prev?.date || null, checkedIn: Boolean(checkedIn || prev?.checkedIn), how: prev?.how || how });
+  };
+
+  const [orders, guests, subs, members, scouts, apps, contacts] = await Promise.all([
+    TicketOrder.find({ status: "paid" }).select("buyerEmail buyerName buyerPhone eventId eventName eventDate items checkedIn createdAt").lean(),
+    GuestEntry.find({ email: { $ne: "" } }).select("email name phone eventId source createdAt").lean(),
+    Subscriber.find({}).select("email fullName phoneNumber createdAt").lean(),
+    Membership.find({ isTest: { $ne: true } }).select("email firstName lastName phone dob status submittedAt").lean(),
+    Scout.find({}).select("email firstName lastName phone createdAt").lean(),
+    ArtistApplication.find({}).select("email firstName lastName phone eventId status createdAt").lean(),
+    Contact.find({}).select("email firstName lastName phone createdAt").lean(),
+  ]);
+
+  const eventIds = new Set();
+  orders.forEach((o) => { if (o.eventId) eventIds.add(String(o.eventId)); (o.items || []).forEach((i) => i.eventId && eventIds.add(String(i.eventId))); });
+  guests.forEach((g) => g.eventId && eventIds.add(String(g.eventId)));
+  const evs = await Event.find({ _id: { $in: [...eventIds].filter(isId) } }).select("name date").lean();
+  const evById = new Map(evs.map((e) => [String(e._id), e]));
+
+  for (const o of orders) {
+    const p = touch(o.buyerEmail, { name: o.buyerName, phone: o.buyerPhone, source: "ticket", at: o.createdAt });
+    const ids = new Set([o.eventId, ...(o.items || []).map((i) => i.eventId)].filter(Boolean).map(String));
+    for (const id of ids) {
+      const e = evById.get(id);
+      addEvent(p, { id, name: e?.name || o.eventName, date: e?.date || o.eventDate, checkedIn: o.checkedIn, how: "Ticket" });
+    }
+  }
+  for (const g of guests) {
+    const p = touch(g.email, { name: g.name, phone: g.phone, source: "guest", at: g.createdAt });
+    const e = evById.get(String(g.eventId));
+    addEvent(p, { id: String(g.eventId), name: e?.name, date: e?.date, how: "Guest list" });
+  }
+  subs.forEach((s) => touch(s.email, { name: s.fullName, phone: s.phoneNumber, source: "subscriber", at: s.createdAt }));
+  members.forEach((m) => touch(m.email, {
+    name: fullName(m), phone: m.phone, source: "member", at: m.submittedAt,
+    birthday: m.dob ? new Date(m.dob).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }) : "",
+  }));
+  scouts.forEach((s) => touch(s.email, { name: fullName(s), phone: s.phone, source: "scout", at: s.createdAt }));
+  apps.forEach((a) => touch(a.email, { name: fullName(a), phone: a.phone, source: "artist", at: a.createdAt }));
+  contacts.forEach((c) => touch(c.email, { name: fullName(c), phone: c.phone, source: "contact", at: c.createdAt }));
+
+  const profiles = await CrmProfile.find({}).lean();
+  const byEmail = new Map(profiles.map((p) => [p.email, p]));
+  // People Vaughn added notes for who aren't anywhere else (shouldn't happen, but keep them)
+  for (const pr of profiles) if (!people.has(pr.email)) touch(pr.email, { at: pr.createdAt });
+
+  return [...people.values()].map((p) => {
+    const events = [...p.events.values()].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    const prof = profileOut(byEmail.get(p.email));
+    return {
+      email: p.email,
+      name: p.name || p.email.split("@")[0],
+      phone: p.phone,
+      sources: [...p.sources].map((s) => SOURCE_LABEL[s] || s),
+      events,
+      eventCount: events.length,
+      lastEvent: events.find((e) => e.date && new Date(e.date) <= new Date()) || null,
+      lastSeen: p.lastSeen,
+      firstSeen: p.firstSeen,
+      memberBirthday: p.memberBirthday,
+      ...prof,
+    };
+  });
+};
+
+// GET /crm/people — everyone, newest activity first
+router.get("/crm/people", async (_req, res) => {
+  try {
+    const people = await buildPeople();
+    people.sort((a, b) => new Date(b.lastSeen || 0) - new Date(a.lastSeen || 0));
+    const tags = [...new Set(people.flatMap((p) => p.tags))].sort();
+    res.json({ people, tags });
+  } catch (err) {
+    console.error("CRM list error:", err.message);
+    res.status(500).json({ error: "Couldn't load people." });
+  }
+});
+
+// PATCH /crm/people/:email — edit details, tags, Brevo checkbox, add or remove a note
+router.patch("/crm/people/:email", async (req, res) => {
+  try {
+    const email = normEmail(decodeURIComponent(req.params.email));
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "That email doesn't look right." });
+    const b = req.body || {};
+    const profile = (await CrmProfile.findOne({ email })) || new CrmProfile({ email });
+    for (const [k, max] of Object.entries(CRM_TEXT)) if (typeof b[k] === "string") profile[k] = clean(b[k], max);
+    if (Array.isArray(b.tags)) {
+      profile.tags = [...new Set(b.tags.map((t) => clean(t, 40).toLowerCase()).filter(Boolean))].slice(0, 20);
+    }
+    if (typeof b.addedToBrevo === "boolean") {
+      if (b.addedToBrevo && !profile.addedToBrevo) profile.addedToBrevoAt = new Date();
+      if (!b.addedToBrevo) profile.addedToBrevoAt = null;
+      profile.addedToBrevo = b.addedToBrevo;
+    }
+    if (typeof b.addNote === "string" && b.addNote.trim()) profile.notes.push({ text: clean(b.addNote, 1000), at: new Date() });
+    if (typeof b.removeNote === "string" && isId(b.removeNote)) profile.notes = profile.notes.filter((n) => String(n._id) !== b.removeNote);
+    await profile.save();
+    res.json({ email, ...profileOut(profile.toObject()) });
+  } catch (err) {
+    console.error("CRM update error:", err.message);
+    res.status(500).json({ error: "Couldn't save. Please try again." });
+  }
+});
+
+// POST /crm/brevo — mark many people as added (or not added) to Brevo at once
+router.post("/crm/brevo", async (req, res) => {
+  try {
+    const emails = [...new Set((Array.isArray(req.body?.emails) ? req.body.emails : []).map(normEmail).filter((e) => EMAIL_RE.test(e)))].slice(0, 2000);
+    const added = req.body?.added !== false;
+    if (!emails.length) return res.status(400).json({ error: "Pick at least one person." });
+    const now = new Date();
+    if (added) {
+      // Keep the original "added" date for anyone already marked
+      const already = new Set((await CrmProfile.find({ email: { $in: emails }, addedToBrevo: true }).select("email").lean()).map((p) => p.email));
+      const todo = emails.filter((e) => !already.has(e));
+      if (todo.length) {
+        await CrmProfile.bulkWrite(todo.map((email) => ({
+          updateOne: { filter: { email }, update: { $set: { addedToBrevo: true, addedToBrevoAt: now } }, upsert: true },
+        })));
+      }
+    } else {
+      await CrmProfile.updateMany({ email: { $in: emails } }, { $set: { addedToBrevo: false, addedToBrevoAt: null } });
+    }
+    res.json({ ok: true, count: emails.length, added });
+  } catch (err) {
+    console.error("CRM Brevo bulk error:", err.message);
+    res.status(500).json({ error: "Couldn't save. Please try again." });
   }
 });
 
