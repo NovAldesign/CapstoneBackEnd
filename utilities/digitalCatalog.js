@@ -35,8 +35,7 @@ export const DIGITAL = [
   single("country", "Country Edition", "Shania Twain and Garth Brooks", "genre"),
   single("gospel", "Gospel Edition", "Kirk Franklin and Mary Mary", "genre"),
   single("motown", "Motown & Soul Classics Edition", "The Temptations and Stevie Wonder", "genre"),
-  // TEST PRICE: $1 so we can run a real purchase. Change back to the normal $12 after the test.
-  { ...single("discofunk", "Disco & Funk Party Edition", "Earth, Wind & Fire and Bee Gees", "genre"), priceCents: 100 },
+  single("discofunk", "Disco & Funk Party Edition", "Earth, Wind & Fire and Bee Gees", "genre"),
   single("christmas", "Christmas Edition", "Mariah Carey and Donny Hathaway", "holiday"),
   single("newyears", "New Year's Eve Edition", "Prince and Kool & The Gang", "holiday"),
   single("valentines", "Valentine's Day Edition", "Boyz II Men and Whitney Houston", "holiday"),
