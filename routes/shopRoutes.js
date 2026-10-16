@@ -24,9 +24,14 @@ import {
   money,
 } from "../utilities/giftCards.js";
 import { Resend } from "resend";
+import fs from "fs";
+import path from "path";
+import DigitalOrder from "../models/digitalOrderSchema.js";
+import Subscriber from "../models/subscriberSchema.js";
+import { DOWNLOADS_DIR, LICENSE, SAMPLE, findDigital, publicDigital, fileLabel } from "../utilities/digitalCatalog.js";
 
 // -------------------------------------------------------
-// /api/shop — Holiday Passes, gift cards and merch pre-orders
+// /api/shop — Holiday Passes, gift cards, merch pre-orders and printable downloads
 // -------------------------------------------------------
 const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -52,7 +57,7 @@ const sendAtFrom = (ymd) => {
 
 /* GET /api/shop/catalog — passes, gift amounts, sale days, merch */
 router.get("/catalog", (req, res) => {
-  res.json({ ...publicCatalog(), merch: publicMerch() });
+  res.json({ ...publicCatalog(), merch: publicMerch(), digital: publicDigital() });
 });
 
 /* -------------------------------------------------------
@@ -185,6 +190,108 @@ router.post("/checkout/merch", async (req, res, next) => {
   }
 });
 
+/* -------------------------------------------------------
+   Printable downloads (Karaoke Bingo cards)
+------------------------------------------------------- */
+const MAX_DOWNLOADS = 100; // per order, across all its files
+
+// POST /api/shop/checkout/digital — Body: { items: ["single-rnb", ...], source }
+router.post("/checkout/digital", async (req, res, next) => {
+  try {
+    if (!stripe) return res.status(500).json({ error: "Checkout isn't set up yet." });
+    const ids = [...new Set((Array.isArray(req.body?.items) ? req.body.items : []).map(String))].slice(0, 20);
+    const products = ids.map(findDigital);
+    if (!products.length || products.some((p) => !p)) return res.status(400).json({ error: "Please choose a download." });
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      customer_creation: "always",
+      line_items: products.map((p) => ({
+        price_data: {
+          currency: "usd",
+          product_data: { name: p.name, description: `Printable download. ${LICENSE}` },
+          unit_amount: p.priceCents,
+        },
+        quantity: 1,
+      })),
+      success_url: `${SITE()}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${SITE()}/shop?cancelled=true#bingo`,
+      metadata: { shopKind: "digital", items: products.map((p) => p.id).join(","), source: cleanSource(req.body?.source) },
+    });
+    res.status(201).json({ url: session.url });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const sendFile = (res, file, downloadName) => {
+  const full = path.join(DOWNLOADS_DIR, path.basename(file));
+  if (!fs.existsSync(full)) return res.status(404).json({ error: "That file isn't ready yet. Email events@grownfolkscollective.com and we'll send it." });
+  res.set("Cache-Control", "private, no-store");
+  // Open PDFs in the browser (easy to print on phones); the name is kept for saving
+  if (/\.pdf$/i.test(full)) {
+    res.type("application/pdf");
+    res.set("Content-Disposition", `inline; filename="${downloadName || path.basename(file)}"`);
+    return res.sendFile(full);
+  }
+  return res.download(full, downloadName || path.basename(file));
+};
+
+// Every file in an order, once each, in catalog order
+const orderFiles = (order) => [...new Set(order.items.flatMap((i) => (i.files?.length ? i.files : findDigital(i.productId)?.files || [])))];
+
+const findOrderByToken = async (token) => {
+  if (!/^[a-f0-9]{48}$/.test(String(token || ""))) return null;
+  const order = await DigitalOrder.findOne({ token });
+  return order && order.status === "paid" ? order : null;
+};
+
+// GET /api/shop/downloads/:token — what's in an order (for the download page)
+router.get("/downloads/:token", wrap(async (req, res) => {
+  const order = await findOrderByToken(req.params.token);
+  if (!order) return res.status(404).json({ error: "We couldn't find that download link." });
+  res.json({
+    orderNumber: order.orderNumber,
+    license: LICENSE,
+    left: Math.max(0, MAX_DOWNLOADS - order.downloads),
+    items: order.items.map((i) => ({ id: i.productId, name: i.name })),
+    files: orderFiles(order).map((f) => ({ file: f, label: fileLabel(f) })),
+  });
+}));
+
+// GET /api/shop/download/:token/:file — one PDF from the order
+router.get("/download/:token/:file", wrap(async (req, res) => {
+  const order = await findOrderByToken(req.params.token);
+  if (!order) return res.status(404).json({ error: "We couldn't find that download link." });
+  const file = String(req.params.file || "");
+  if (!orderFiles(order).includes(file)) return res.status(404).json({ error: "That file isn't part of this order." });
+  if (order.downloads >= MAX_DOWNLOADS) {
+    return res.status(429).json({ error: "This link has reached its download limit. Email events@grownfolkscollective.com and we'll help." });
+  }
+  order.downloads += 1;
+  order.lastDownloadAt = new Date();
+  await order.save();
+  return sendFile(res, file, `GFC-${file}`);
+}));
+
+// POST /api/shop/sample — Body: { fullName, email } → joins the email list, returns the sample link
+router.post("/sample", wrap(async (req, res) => {
+  const fullName = clean(req.body?.fullName, 80);
+  const email = clean(req.body?.email, 200).toLowerCase();
+  if (!fullName) return res.status(400).json({ error: "Add your name." });
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "Add a valid email." });
+  await Subscriber.updateOne(
+    { email },
+    { $setOnInsert: { fullName, email, source: "bingo-sample", createdAt: new Date() } },
+    { upsert: true }
+  );
+  res.json({ ok: true, url: "/api/shop/sample/file" });
+}));
+
+// GET /api/shop/sample/file — the free 2-card sample
+router.get("/sample/file", (req, res) => sendFile(res, SAMPLE.file, "GFC-Karaoke-Bingo-Sample.pdf"));
+
 /* GET /api/shop/card/:code — balance check (no personal details) */
 router.get("/card/:code", wrap(async (req, res) => {
   const card = await GiftCard.findOne({ code: normalizeCardCode(req.params.code) }).lean();
@@ -224,6 +331,10 @@ router.get("/order/:sessionId", wrap(async (req, res) => {
   const order = await MerchOrder.findOne({ stripeSessionId: id }).lean();
   if (order) {
     return res.json({ type: "merch", orderNumber: order.orderNumber, items: order.items.map((i) => ({ name: i.name, size: i.size, quantity: i.quantity })) });
+  }
+  const digital = await DigitalOrder.findOne({ stripeSessionId: id }).lean();
+  if (digital) {
+    return res.json({ type: "digital", orderNumber: digital.orderNumber, token: digital.token, items: digital.items.map((i) => ({ id: i.productId, name: i.name })) });
   }
   res.json({ type: "pending" }); // the webhook may still be on its way
 }));
@@ -317,6 +428,63 @@ export const handleShopSession = async (session) => {
     }
     return { merch: order.orderNumber };
   }
+  if (m.shopKind === "digital") {
+    const d = session.customer_details || {};
+    const items = String(m.items || "")
+      .split(",")
+      .map(findDigital)
+      .filter(Boolean)
+      .map((p) => ({ productId: p.id, name: p.name, priceCents: p.priceCents, files: p.files }));
+    let order;
+    try {
+      order = await DigitalOrder.create({
+        stripeSessionId: session.id,
+        stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : "",
+        buyerName: d.name || "",
+        buyerEmail: d.email || "",
+        items,
+        totalPaidCents: session.amount_total || 0,
+        source: m.source || "",
+      });
+    } catch (err) {
+      if (err?.code === 11000) return { duplicate: true };
+      throw err;
+    }
+    if (resend) {
+      const link = `${SITE()}/downloads/${order.token}`;
+      const list = order.items.map((i) => `<li>${escapeHtml(i.name)}</li>`).join("");
+      const first = (order.buyerName || "").split(" ")[0] || "friend";
+      await Promise.all([
+        order.buyerEmail &&
+          resend.emails
+            .send({
+              from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
+              to: order.buyerEmail,
+              reply_to: TEAM_EMAIL,
+              subject: `🎤 Your Karaoke Bingo cards are ready (${order.orderNumber})`,
+              html: `<div style="font-family:Arial,sans-serif;color:#0E2340;max-width:600px;margin:0 auto;padding:24px;background:#FAF7F0;">
+                <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">Let's get the room singing, ${escapeHtml(first)}!</h2>
+                <p>Order <strong>${escapeHtml(order.orderNumber)}</strong></p><ul>${list}</ul>
+                <p style="margin:24px 0;"><a href="${link}" style="background:#0E2340;color:#fff;padding:14px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">Download your cards</a></p>
+                <p>Save this email. Your link works any time you need to print again.</p>
+                <p style="font-size:13px;color:#5F6672;">${escapeHtml(LICENSE)}</p>
+                <p>Questions? Just reply to this email.</p>
+                <p><img src="https://www.grownfolkscollective.com/email/gfc-logo.png" width="90" alt="Grown Folks Collective" style="display:block;width:90px;border-radius:50%;"></p>
+                <p style="font-family:Georgia,serif;font-style:italic;color:#9A7630;">Where grown folks come out to play.™</p></div>`,
+            })
+            .catch((e) => console.error("Download buyer email failed:", e.message)),
+        resend.emails
+          .send({
+            from: "GFC Shop <noreply@grownfolkscollective.com>",
+            to: TEAM_EMAIL,
+            subject: `🎤 Bingo download sold: ${order.buyerName || "New buyer"} (${money(order.totalPaidCents)})`,
+            html: `<div style="font-family:Arial,sans-serif;color:#0E2340;"><h2>🎤 ${escapeHtml(order.orderNumber)}</h2><ul>${list}</ul><p>${escapeHtml(order.buyerEmail)}</p></div>`,
+          })
+          .catch((e) => console.error("Download team email failed:", e.message)),
+      ]);
+    }
+    return { digital: order.orderNumber };
+  }
   return { ignored: true };
 };
 
@@ -395,6 +563,11 @@ router.patch("/admin/merch-orders/:id", ...admin, wrap(async (req, res) => {
   const order = await MerchOrder.findByIdAndUpdate(req.params.id, { $set: set }, { new: true });
   if (!order) return res.status(404).json({ error: "Order not found." });
   res.json(order);
+}));
+
+router.get("/admin/digital-orders", ...admin, wrap(async (req, res) => {
+  const orders = await DigitalOrder.find({}).sort({ createdAt: -1 }).limit(1000).lean();
+  res.json({ orders, totalCents: orders.filter((o) => o.status === "paid").reduce((s, o) => s + o.totalPaidCents, 0) });
 }));
 
 export default router;
