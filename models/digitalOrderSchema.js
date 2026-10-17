@@ -24,6 +24,17 @@ const DigitalOrderSchema = new mongoose.Schema(
     totalPaidCents: { type: Number, default: 0 },
     ticketCode: { type: String, default: "" }, // 5% off tickets, earned with this order
     noRefundAgreedAt: { type: Date, default: null }, // when the buyer checked "downloads are non-refundable"
+    noRefundAgreedIp: { type: String, default: "" },
+    // Every file download (newest last, capped at 200): evidence if a charge is ever disputed
+    downloadLog: [
+      {
+        _id: false,
+        at: { type: Date, default: Date.now },
+        file: { type: String, default: "" },
+        ip: { type: String, default: "" },
+        userAgent: { type: String, default: "" },
+      },
+    ],
     downloads: { type: Number, default: 0 },
     lastDownloadAt: { type: Date, default: null },
     source: { type: String, default: "" },

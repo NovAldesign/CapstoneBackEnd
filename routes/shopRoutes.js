@@ -56,6 +56,8 @@ const FINAL_SALE_MERCH = "Merch is made to order, so all sales are final.";
 // Buyers must check "I understand Karaoke Bingo downloads are non-refundable" on our site first
 const NEEDS_AGREEMENT = "Please check the box to confirm you understand Karaoke Bingo downloads are non-refundable.";
 const agreedNoRefund = (body) => body?.agreeNoRefund === true;
+// The visitor's real IP (Railway sits in front of the app, so it arrives in x-forwarded-for)
+const clientIp = (req) => String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim().slice(0, 64);
 
 // Karaoke Bingo cards bought together with merch: this much off the cards only
 export const COMBO_PERCENT = 10;
@@ -179,6 +181,7 @@ router.post("/checkout/merch", async (req, res, next) => {
     if (cardLines.length) {
       metadata.digital = cardLines.map((c) => `${c.id}:${c.paidCents}`).join(",");
       metadata.noRefundAgreedAt = new Date().toISOString();
+      metadata.noRefundAgreedIp = clientIp(req);
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -186,6 +189,7 @@ router.post("/checkout/merch", async (req, res, next) => {
       payment_method_types: ["card"],
       phone_number_collection: { enabled: true },
       shipping_address_collection: { allowed_countries: ["US"] },
+      ...(cardLines.length && { billing_address_collection: "required" }), // address check on bingo downloads
       shipping_options: [
         {
           shipping_rate_data: {
@@ -249,6 +253,7 @@ router.post("/checkout/digital", async (req, res, next) => {
       mode: "payment",
       payment_method_types: ["card"],
       customer_creation: "always",
+      billing_address_collection: "required", // lets the card issuer check the address (fraud screening)
       line_items: products.map((p) => ({
         price_data: {
           currency: "usd",
@@ -261,7 +266,7 @@ router.post("/checkout/digital", async (req, res, next) => {
       ...recoveryOptions(),
       custom_text: { submit: { message: NO_REFUND_CARDS } },
       cancel_url: `${SITE()}/shop?cancelled=true#bingo`,
-      metadata: { shopKind: "digital", items: products.map((p) => p.id).join(","), source: cleanSource(req.body?.source), noRefundAgreedAt: new Date().toISOString() },
+      metadata: { shopKind: "digital", items: products.map((p) => p.id).join(","), source: cleanSource(req.body?.source), noRefundAgreedAt: new Date().toISOString(), noRefundAgreedIp: clientIp(req) },
     });
     res.status(201).json({ url: session.url });
   } catch (err) {
@@ -316,6 +321,10 @@ router.get("/download/:token/:file", wrap(async (req, res) => {
   }
   order.downloads += 1;
   order.lastDownloadAt = new Date();
+  order.downloadLog = [
+    ...(order.downloadLog || []),
+    { at: order.lastDownloadAt, file, ip: clientIp(req), userAgent: String(req.headers["user-agent"] || "").slice(0, 300) },
+  ].slice(-200);
   await order.save();
   return sendFile(res, file, `GFC-${file}`);
 }));
@@ -452,6 +461,7 @@ const createDigitalOrder = async (session, lines, { totalPaidCents, withTicketCo
       totalPaidCents,
       source: m.source || "",
       noRefundAgreedAt: m.noRefundAgreedAt ? new Date(m.noRefundAgreedAt) : null,
+      noRefundAgreedIp: m.noRefundAgreedIp || "",
     });
   } catch (err) {
     if (err?.code === 11000) return null;
@@ -819,6 +829,24 @@ router.patch("/admin/merch-orders/:id", ...admin, wrap(async (req, res) => {
   const order = await MerchOrder.findByIdAndUpdate(req.params.id, { $set: set }, { new: true });
   if (!order) return res.status(404).json({ error: "Order not found." });
   res.json(order);
+}));
+
+// GET /api/shop/admin/digital-orders/:orderNumber/evidence
+// { text }: a plain-text summary to paste into a Stripe dispute: what they agreed to, what they got, when they downloaded.
+router.get("/admin/digital-orders/:orderNumber/evidence", ...admin, wrap(async (req, res) => {
+  const order = await DigitalOrder.findOne({ orderNumber: String(req.params.orderNumber).toUpperCase() }).lean();
+  if (!order) return res.status(404).json({ error: "Order not found." });
+  const et = (d) => (d ? new Date(d).toLocaleString("en-US", { timeZone: "America/New_York" }) + " ET" : "not recorded");
+  const lines = [
+    `Order ${order.orderNumber}: digital download (printable Karaoke Bingo PDFs), delivered instantly by private link and email.`,
+    `Buyer: ${order.buyerName || "(no name)"} <${order.buyerEmail}>. Paid ${money(order.totalPaidCents)} on ${et(order.createdAt)}.`,
+    `Stripe session: ${order.stripeSessionId}${order.stripePaymentIntentId ? `, payment ${order.stripePaymentIntentId}` : ""}.`,
+    `Items: ${order.items.map((i) => i.name).join("; ")}.`,
+    `Before paying, the buyer checked a required box: "I understand Karaoke Bingo downloads are non-refundable. My files are delivered right after checkout." Agreed ${et(order.noRefundAgreedAt)}${order.noRefundAgreedIp ? ` from IP ${order.noRefundAgreedIp}` : ""}. Policy: grownfolkscollective.com/refund-policy`,
+    `Files downloaded ${order.downloads} time(s).`,
+    ...(order.downloadLog || []).map((d) => `  ${et(d.at)}  ${d.file}  IP ${d.ip || "?"}  ${d.userAgent ? `(${d.userAgent.slice(0, 120)})` : ""}`),
+  ];
+  res.json({ orderNumber: order.orderNumber, text: lines.join("\n") });
 }));
 
 router.get("/admin/digital-orders", ...admin, wrap(async (req, res) => {
