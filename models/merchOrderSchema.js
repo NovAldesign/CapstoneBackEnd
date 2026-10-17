@@ -43,6 +43,7 @@ const MerchOrderSchema = new mongoose.Schema(
       enum: ["paid", "draft", "preorder", "ordered", "shipped", "cancelled"],
       default: "paid",
     },
+    ticketCode: { type: String, default: "" }, // 5% off tickets, earned with this order
     printfulOrderId: { type: String, default: "" },
     printfulStatus: { type: String, default: "" },
     printfulError: { type: String, default: "" },

@@ -22,6 +22,7 @@ const DigitalOrderSchema = new mongoose.Schema(
     buyerEmail: { type: String, default: "", lowercase: true, trim: true },
     items: [DigitalItemSchema],
     totalPaidCents: { type: Number, default: 0 },
+    ticketCode: { type: String, default: "" }, // 5% off tickets, earned with this order
     downloads: { type: Number, default: 0 },
     lastDownloadAt: { type: Date, default: null },
     source: { type: String, default: "" },

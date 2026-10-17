@@ -11,6 +11,7 @@ import { protect, restrictTo } from '../middleware/authMiddleware.js';
 import { findUsableCard, cardCredit, redeemCard, looksLikeCard } from '../utilities/giftCards.js';
 import { handleShopSession } from './shopRoutes.js';
 import { markSponsorPaid } from './partnerPortalRoutes.js';
+import { recoveryOptions, handleExpiredSession, markRecovered } from '../utilities/cartRecovery.js';
 import {
   memberFromRequest, getsMemberPricing, memberPriceCents, creditForUnits, creditCoversEvent,
   creditBalanceCents, useCredit,
@@ -573,6 +574,8 @@ router.post('/checkout', async (req, res, next) => {
       cancel_url:  `${process.env.FRONTEND_URL || 'https://grownfolkscollective.com'}/events?cancelled=true`,
       // Credit is taken when payment completes, so keep the window short
       ...(memberCreditCents > 0 && { expires_at: Math.floor(Date.now() / 1000) + 30 * 60 }),
+      // Unpaid bags get a one-time reminder email (not when a gift card or member credit is applied)
+      ...(!discounts && recoveryOptions()),
       metadata
     });
 
@@ -812,9 +815,21 @@ router.post('/webhook/stripe', async (req, res, next) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // Unpaid checkout timed out: send the one-time "you left something in your bag" email
+  if (stripeEvent.type === 'checkout.session.expired') {
+    try {
+      const result = await handleExpiredSession(stripeEvent.data.object);
+      return res.status(200).json({ received: true, ...result });
+    } catch (err) {
+      console.error('Cart reminder failed:', err.message);
+      return res.status(200).json({ received: true, reminder: 'failed' });
+    }
+  }
+
   if (stripeEvent.type === 'checkout.session.completed') {
     const session = stripeEvent.data.object;
     const meta = session.metadata || {};
+    markRecovered(session);
 
     // Sponsor payments from the partner portal
     if (meta.partnerPortal) {

@@ -16,6 +16,8 @@ import {
 import { publicMerch, getMerch, findVariant, shippingFor, merchStatus, MERCH_SETTINGS } from "../utilities/merchCatalog.js";
 import { createDraftOrder, registerWebhook, storeInfo, printfulReady } from "../utilities/printful.js";
 import crypto from "crypto";
+import { recoveryOptions } from "../utilities/cartRecovery.js";
+import PromoCode from "../models/promoCodeSchema.js";
 import {
   makeCode,
   createCardsFromSession,
@@ -48,6 +50,10 @@ const cleanSource = (v) => String(v || "").replace(/[^a-z0-9_-]/gi, "").slice(0,
 const escapeHtml = (value = "") =>
   String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// Karaoke Bingo cards bought together with merch: this much off the cards only
+export const COMBO_PERCENT = 10;
+const comboPrice = (cents) => Math.round(cents * (1 - COMBO_PERCENT / 100));
+
 // Delivery date: "YYYY-MM-DD" → 9 AM Eastern that day (today or past = send now)
 const sendAtFrom = (ymd) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ""))) return new Date();
@@ -59,7 +65,7 @@ const sendAtFrom = (ymd) => {
 
 /* GET /api/shop/catalog — passes, gift amounts, sale days, merch */
 router.get("/catalog", wrap(async (req, res) => {
-  res.json({ ...publicCatalog(), merch: await publicMerch(), digital: publicDigital() });
+  res.json({ ...publicCatalog(), merch: await publicMerch(), digital: publicDigital(), comboPercent: COMBO_PERCENT });
 }));
 
 /* -------------------------------------------------------
@@ -117,6 +123,7 @@ router.post("/checkout", async (req, res, next) => {
       payment_method_types: ["card"],
       line_items: [{ price_data: { currency: "usd", product_data: { name, description }, unit_amount: unitCents }, quantity: 1 }],
       success_url: `${SITE()}/gift/success?session_id={CHECKOUT_SESSION_ID}`,
+      ...recoveryOptions(),
       cancel_url: `${SITE()}/gift?cancelled=true`,
       metadata: meta,
     });
@@ -128,7 +135,9 @@ router.post("/checkout", async (req, res, next) => {
 
 /* -------------------------------------------------------
    POST /api/shop/checkout/merch — merch, made to order by Printful
-   Body: { items: [{ variantId, quantity }], source }
+   Body: { items: [{ variantId, quantity }], digital: ["single-rnb", ...], source }
+   Karaoke Bingo cards bought with merch are 10% off (the cards only, never the merch).
+   Shipping and free shipping are based on the merch alone.
 ------------------------------------------------------- */
 router.post("/checkout/merch", async (req, res, next) => {
   try {
@@ -150,10 +159,16 @@ router.post("/checkout/merch", async (req, res, next) => {
     const subtotal = lines.reduce((s, l) => s + l.cents * l.qty, 0);
     const shipping = shippingFor(subtotal);
 
+    const digitalIds = [...new Set((Array.isArray(req.body?.digital) ? req.body.digital : []).map(String))].slice(0, 20);
+    const cards = digitalIds.map(findDigital);
+    if (cards.some((p) => !p)) return res.status(400).json({ error: "A Karaoke Bingo item in your bag isn't available anymore. Please refresh and try again." });
+    const cardLines = cards.map((p) => ({ ...p, paidCents: comboPrice(p.priceCents) }));
+
     const metadata = { shopKind: "merch", source: cleanSource(req.body?.source), shippingCents: String(shipping), lineCount: String(lines.length) };
     lines.forEach((l, i) => {
       metadata[`m_${i}`] = JSON.stringify({ v: l.variantId, i: l.productId, q: l.qty, p: l.cents });
     });
+    if (cardLines.length) metadata.digital = cardLines.map((c) => `${c.id}:${c.paidCents}`).join(",");
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -169,18 +184,32 @@ router.post("/checkout/merch", async (req, res, next) => {
           },
         },
       ],
-      line_items: lines.map((l) => ({
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: `${l.name}${l.size ? ` · ${l.size}` : ""}${l.color ? ` · ${l.color}` : ""}`,
-            description: MERCH_SETTINGS.shipNote,
+      line_items: [
+        ...lines.map((l) => ({
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: `${l.name}${l.size ? ` · ${l.size}` : ""}${l.color ? ` · ${l.color}` : ""}`,
+              description: MERCH_SETTINGS.shipNote,
+            },
+            unit_amount: l.cents,
           },
-          unit_amount: l.cents,
-        },
-        quantity: l.qty,
-      })),
+          quantity: l.qty,
+        })),
+        ...cardLines.map((c) => ({
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: `${c.name} (${COMBO_PERCENT}% off with merch)`,
+              description: `Printable download, sent by email right after checkout. Regular price ${money(c.priceCents)}.`,
+            },
+            unit_amount: c.paidCents,
+          },
+          quantity: 1,
+        })),
+      ],
       success_url: `${SITE()}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
+      ...recoveryOptions(),
       cancel_url: `${SITE()}/shop?cancelled=true#merch`,
       metadata,
     });
@@ -216,6 +245,7 @@ router.post("/checkout/digital", async (req, res, next) => {
         quantity: 1,
       })),
       success_url: `${SITE()}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
+      ...recoveryOptions(),
       cancel_url: `${SITE()}/shop?cancelled=true#bingo`,
       metadata: { shopKind: "digital", items: products.map((p) => p.id).join(","), source: cleanSource(req.body?.source) },
     });
@@ -329,15 +359,129 @@ router.get("/order/:sessionId", wrap(async (req, res) => {
     });
   }
   const order = await MerchOrder.findOne({ stripeSessionId: id }).lean();
-  if (order) {
-    return res.json({ type: "merch", orderNumber: order.orderNumber, items: order.items.map((i) => ({ name: i.name, size: i.size, quantity: i.quantity })) });
-  }
   const digital = await DigitalOrder.findOne({ stripeSessionId: id }).lean();
+  if (order) {
+    return res.json({
+      type: "merch",
+      orderNumber: order.orderNumber,
+      ticketCode: order.ticketCode || "",
+      ticketPercent: SHOP_TICKET_PERCENT,
+      items: order.items.map((i) => ({ name: i.name, size: i.size, quantity: i.quantity })),
+      downloadsToken: digital?.token || "",
+    });
+  }
   if (digital) {
-    return res.json({ type: "digital", orderNumber: digital.orderNumber, token: digital.token, items: digital.items.map((i) => ({ id: i.productId, name: i.name })) });
+    return res.json({ type: "digital", orderNumber: digital.orderNumber, ticketCode: digital.ticketCode || "", ticketPercent: SHOP_TICKET_PERCENT, token: digital.token, items: digital.items.map((i) => ({ id: i.productId, name: i.name })) });
   }
   res.json({ type: "pending" }); // the webhook may still be on its way
 }));
+
+// -------------------------------------------------------
+// Shop thank-you: every merch or Karaoke Bingo order earns 5% off event tickets
+// (one order, any event, good for 60 days). Gift cards and passes don't earn it.
+// -------------------------------------------------------
+export const SHOP_TICKET_PERCENT = 5;
+const TICKET_CODE_DAYS = 60;
+
+const makeTicketCode = async (orderNumber) => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const expires = new Date(Date.now() + TICKET_CODE_DAYS * 86400000).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  for (let tries = 0; tries < 5; tries++) {
+    let code = "SHOP5"; // letters and numbers only (codes are matched without dashes or spaces)
+    for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    try {
+      await PromoCode.create({
+        code,
+        label: `${SHOP_TICKET_PERCENT}% off tickets (shop order ${orderNumber})`,
+        type: "percent",
+        value: SHOP_TICKET_PERCENT,
+        maxUses: 1,
+        expires,
+        notes: `Earned with shop order ${orderNumber}`,
+      });
+      return { code, expires };
+    } catch (err) {
+      if (err?.code !== 11000) {
+        console.error("Shop ticket code failed:", err.message);
+        return null;
+      }
+    }
+  }
+  return null;
+};
+
+const ticketCodeHtml = (tc) =>
+  tc?.code
+    ? `<div style="margin:22px 0;padding:16px 18px;background:#fff;border:2px dashed #C5A059;border-radius:10px;">
+        <p style="margin:0 0 6px;font-weight:bold;">🎟️ Thank-you gift: ${SHOP_TICKET_PERCENT}% off your next event tickets</p>
+        <p style="margin:0 0 10px;">Code <strong style="font-size:18px;letter-spacing:1px;">${escapeHtml(tc.code)}</strong> · one order, any GFC event, good through ${escapeHtml(tc.expires)}.</p>
+        <a href="${SITE()}/events?code=${encodeURIComponent(tc.code)}" style="color:#0E2340;font-weight:bold;">Pick your event →</a>
+      </div>`
+    : "";
+
+// Save a Karaoke Bingo order and email the download link.
+// Used for card-only checkouts and for cards bought together with merch.
+const createDigitalOrder = async (session, lines, { totalPaidCents, withTicketCode, withMerch = "" }) => {
+  const m = session.metadata || {};
+  const d = session.customer_details || {};
+  const items = lines.map(({ product: p, paidCents }) => ({ productId: p.id, name: p.name, priceCents: paidCents, files: p.files }));
+  if (!items.length) return null;
+  let order;
+  try {
+    order = await DigitalOrder.create({
+      stripeSessionId: session.id,
+      stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : "",
+      buyerName: d.name || "",
+      buyerEmail: d.email || "",
+      items,
+      totalPaidCents,
+      source: m.source || "",
+    });
+  } catch (err) {
+    if (err?.code === 11000) return null;
+    throw err;
+  }
+  const tc = withTicketCode ? await makeTicketCode(order.orderNumber) : null;
+  if (tc) {
+    order.ticketCode = tc.code;
+    await order.save();
+  }
+  if (resend) {
+    const link = `${SITE()}/downloads/${order.token}`;
+    const list = order.items.map((i) => `<li>${escapeHtml(i.name)}</li>`).join("");
+    const first = (order.buyerName || "").split(" ")[0] || "friend";
+    await Promise.all([
+      order.buyerEmail &&
+        resend.emails
+          .send({
+            from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
+            to: order.buyerEmail,
+            reply_to: TEAM_EMAIL,
+            subject: `🎤 Your Karaoke Bingo cards are ready (${order.orderNumber})`,
+            html: `<div style="font-family:Arial,sans-serif;color:#0E2340;max-width:600px;margin:0 auto;padding:24px;background:#FAF7F0;">
+              <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">Let's get the room singing, ${escapeHtml(first)}!</h2>
+              <p>Order <strong>${escapeHtml(order.orderNumber)}</strong>${withMerch ? ` (bought with merch order ${escapeHtml(withMerch)}, ${COMBO_PERCENT}% off your cards)` : ""}</p><ul>${list}</ul>
+              <p style="margin:24px 0;"><a href="${link}" style="background:#0E2340;color:#fff;padding:14px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">Download your cards</a></p>
+              <p>Save this email. Your link works any time you need to print again.</p>
+              ${ticketCodeHtml(tc)}
+              <p style="font-size:13px;color:#5F6672;">${escapeHtml(LICENSE)}</p>
+              <p>Questions? Just reply to this email.</p>
+              <p><img src="https://www.grownfolkscollective.com/email/gfc-logo.png" width="90" alt="Grown Folks Collective" style="display:block;width:90px;border-radius:50%;"></p>
+              <p style="font-family:Georgia,serif;font-style:italic;color:#9A7630;">Where grown folks come out to play.™</p></div>`,
+          })
+          .catch((e) => console.error("Download buyer email failed:", e.message)),
+      resend.emails
+        .send({
+          from: "GFC Shop <noreply@grownfolkscollective.com>",
+          to: TEAM_EMAIL,
+          subject: `🎤 Bingo download sold: ${order.buyerName || "New buyer"} (${money(order.totalPaidCents)})${withMerch ? " with merch" : ""}`,
+          html: `<div style="font-family:Arial,sans-serif;color:#0E2340;"><h2>🎤 ${escapeHtml(order.orderNumber)}</h2><ul>${list}</ul><p>${escapeHtml(order.buyerEmail)}</p></div>`,
+        })
+        .catch((e) => console.error("Download team email failed:", e.message)),
+    ]);
+  }
+  return order;
+};
 
 // Save a paid merch order in Printful as a draft (never confirmed automatically)
 const sendToPrintful = async (order) => {
@@ -462,6 +606,18 @@ export const handleShopSession = async (session) => {
         printful: found?.variant.name || "",
       });
     }
+    // Karaoke Bingo cards bought in the same checkout ("id:paidCents,...")
+    const cardLines = String(m.digital || "")
+      .split(",")
+      .filter(Boolean)
+      .map((pair) => {
+        const [id, cents] = pair.split(":");
+        const product = findDigital(id);
+        return product ? { product, paidCents: Number(cents) || comboPrice(product.priceCents) } : null;
+      })
+      .filter(Boolean);
+    const cardsTotal = cardLines.reduce((s, c) => s + c.paidCents, 0);
+
     let order;
     try {
       order = await MerchOrder.create({
@@ -482,7 +638,7 @@ export const handleShopSession = async (session) => {
         items,
         subtotalCents: items.reduce((s, i) => s + i.priceCents * i.quantity, 0),
         shippingCents: Number(m.shippingCents) || 0,
-        totalPaidCents: session.amount_total || 0,
+        totalPaidCents: Math.max(0, (session.amount_total || 0) - cardsTotal),
         source: m.source || "",
         status: "paid",
       });
@@ -491,6 +647,14 @@ export const handleShopSession = async (session) => {
       throw err;
     }
     await sendToPrintful(order);
+    if (cardLines.length) {
+      await createDigitalOrder(session, cardLines, { totalPaidCents: cardsTotal, withTicketCode: false, withMerch: order.orderNumber });
+    }
+    const tc = await makeTicketCode(order.orderNumber);
+    if (tc) {
+      order.ticketCode = tc.code;
+      await order.save();
+    }
     if (resend) {
       const list = order.items
         .map((i) => `<li>${escapeHtml(i.name)}${i.size ? ` · ${escapeHtml(i.size)}` : ""}${i.color ? ` · ${escapeHtml(i.color)}` : ""} × ${i.quantity}</li>`)
@@ -512,6 +676,8 @@ export const handleShopSession = async (session) => {
                 <p>Order <strong>${escapeHtml(order.orderNumber)}</strong></p><ul>${list}</ul>
                 <p>Total paid: <strong>${money(order.totalPaidCents)}</strong></p>
                 <p>${escapeHtml(MERCH_SETTINGS.shipNote)} We'll email your tracking number when it ships.</p>
+                ${cardLines.length ? `<p>🎤 Your Karaoke Bingo cards (${COMBO_PERCENT}% off with your merch) come in a separate email with your download link.</p>` : ""}
+                ${ticketCodeHtml(tc)}
                 <p>Questions? Just reply to this email.</p>
                 <p><img src="https://www.grownfolkscollective.com/email/gfc-logo.png" width="90" alt="Grown Folks Collective" style="display:block;width:90px;border-radius:50%;"></p>
                 <p style="font-family:Georgia,serif;font-style:italic;color:#9A7630;">Where grown folks come out to play.™</p></div>`,
@@ -531,61 +697,12 @@ export const handleShopSession = async (session) => {
     return { merch: order.orderNumber };
   }
   if (m.shopKind === "digital") {
-    const d = session.customer_details || {};
-    const items = String(m.items || "")
-      .split(",")
-      .map(findDigital)
-      .filter(Boolean)
-      .map((p) => ({ productId: p.id, name: p.name, priceCents: p.priceCents, files: p.files }));
-    let order;
-    try {
-      order = await DigitalOrder.create({
-        stripeSessionId: session.id,
-        stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : "",
-        buyerName: d.name || "",
-        buyerEmail: d.email || "",
-        items,
-        totalPaidCents: session.amount_total || 0,
-        source: m.source || "",
-      });
-    } catch (err) {
-      if (err?.code === 11000) return { duplicate: true };
-      throw err;
-    }
-    if (resend) {
-      const link = `${SITE()}/downloads/${order.token}`;
-      const list = order.items.map((i) => `<li>${escapeHtml(i.name)}</li>`).join("");
-      const first = (order.buyerName || "").split(" ")[0] || "friend";
-      await Promise.all([
-        order.buyerEmail &&
-          resend.emails
-            .send({
-              from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
-              to: order.buyerEmail,
-              reply_to: TEAM_EMAIL,
-              subject: `🎤 Your Karaoke Bingo cards are ready (${order.orderNumber})`,
-              html: `<div style="font-family:Arial,sans-serif;color:#0E2340;max-width:600px;margin:0 auto;padding:24px;background:#FAF7F0;">
-                <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">Let's get the room singing, ${escapeHtml(first)}!</h2>
-                <p>Order <strong>${escapeHtml(order.orderNumber)}</strong></p><ul>${list}</ul>
-                <p style="margin:24px 0;"><a href="${link}" style="background:#0E2340;color:#fff;padding:14px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">Download your cards</a></p>
-                <p>Save this email. Your link works any time you need to print again.</p>
-                <p style="font-size:13px;color:#5F6672;">${escapeHtml(LICENSE)}</p>
-                <p>Questions? Just reply to this email.</p>
-                <p><img src="https://www.grownfolkscollective.com/email/gfc-logo.png" width="90" alt="Grown Folks Collective" style="display:block;width:90px;border-radius:50%;"></p>
-                <p style="font-family:Georgia,serif;font-style:italic;color:#9A7630;">Where grown folks come out to play.™</p></div>`,
-            })
-            .catch((e) => console.error("Download buyer email failed:", e.message)),
-        resend.emails
-          .send({
-            from: "GFC Shop <noreply@grownfolkscollective.com>",
-            to: TEAM_EMAIL,
-            subject: `🎤 Bingo download sold: ${order.buyerName || "New buyer"} (${money(order.totalPaidCents)})`,
-            html: `<div style="font-family:Arial,sans-serif;color:#0E2340;"><h2>🎤 ${escapeHtml(order.orderNumber)}</h2><ul>${list}</ul><p>${escapeHtml(order.buyerEmail)}</p></div>`,
-          })
-          .catch((e) => console.error("Download team email failed:", e.message)),
-      ]);
-    }
-    return { digital: order.orderNumber };
+    const products = String(m.items || "").split(",").map(findDigital).filter(Boolean);
+    const order = await createDigitalOrder(session, products.map((p) => ({ product: p, paidCents: p.priceCents })), {
+      totalPaidCents: session.amount_total || 0,
+      withTicketCode: true,
+    });
+    return order ? { digital: order.orderNumber } : { duplicate: true };
   }
   return { ignored: true };
 };
