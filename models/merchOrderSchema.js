@@ -1,9 +1,10 @@
 import mongoose from "mongoose";
 
-// Merch pre-orders. Paid on our site, then placed in Printful after the pre-sale closes.
+// Merch orders. Paid on our site, then saved in Printful as a draft for Vaughn to confirm.
 const MerchItemSchema = new mongoose.Schema(
   {
     productId: { type: String, required: true },
+    variantId: { type: String, default: "" }, // Printful sync variant id
     name: { type: String, default: "" },
     size: { type: String, default: "" },
     color: { type: String, default: "" },
@@ -36,10 +37,20 @@ const MerchOrderSchema = new mongoose.Schema(
     shippingCents: { type: Number, default: 0 },
     totalPaidCents: { type: Number, default: 0 },
     source: { type: String, default: "" },
+    // paid → draft (waiting for Confirm in Printful) → ordered (in production) → shipped
     status: {
       type: String,
-      enum: ["preorder", "ordered", "shipped", "cancelled"],
-      default: "preorder",
+      enum: ["paid", "draft", "preorder", "ordered", "shipped", "cancelled"],
+      default: "paid",
+    },
+    printfulOrderId: { type: String, default: "" },
+    printfulStatus: { type: String, default: "" },
+    printfulError: { type: String, default: "" },
+    tracking: {
+      carrier: { type: String, default: "" },
+      number: { type: String, default: "" },
+      url: { type: String, default: "" },
+      shippedAt: { type: Date, default: null },
     },
     adminNotes: { type: String, default: "" },
   },

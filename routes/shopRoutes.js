@@ -13,7 +13,9 @@ import {
   giftBonusCents,
   PASS_RULES,
 } from "../utilities/shopCatalog.js";
-import { publicMerch, presaleOpen, findMerch, merchPrice, shippingFor } from "../utilities/merchCatalog.js";
+import { publicMerch, getMerch, findVariant, shippingFor, merchStatus, MERCH_SETTINGS } from "../utilities/merchCatalog.js";
+import { createDraftOrder, registerWebhook, storeInfo, printfulReady } from "../utilities/printful.js";
+import crypto from "crypto";
 import {
   makeCode,
   createCardsFromSession,
@@ -31,7 +33,7 @@ import Subscriber from "../models/subscriberSchema.js";
 import { DOWNLOADS_DIR, LICENSE, SAMPLE, findDigital, publicDigital, fileLabel } from "../utilities/digitalCatalog.js";
 
 // -------------------------------------------------------
-// /api/shop — Holiday Passes, gift cards, merch pre-orders and printable downloads
+// /api/shop — Holiday Passes, gift cards, Printful merch and printable downloads
 // -------------------------------------------------------
 const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -56,9 +58,9 @@ const sendAtFrom = (ymd) => {
 };
 
 /* GET /api/shop/catalog — passes, gift amounts, sale days, merch */
-router.get("/catalog", (req, res) => {
-  res.json({ ...publicCatalog(), merch: publicMerch(), digital: publicDigital() });
-});
+router.get("/catalog", wrap(async (req, res) => {
+  res.json({ ...publicCatalog(), merch: await publicMerch(), digital: publicDigital() });
+}));
 
 /* -------------------------------------------------------
    POST /api/shop/checkout — a Holiday Pass or a gift card
@@ -125,34 +127,32 @@ router.post("/checkout", async (req, res, next) => {
 });
 
 /* -------------------------------------------------------
-   POST /api/shop/checkout/merch — merch pre-order
-   Body: { items: [{ id, size, color, quantity }], source }
+   POST /api/shop/checkout/merch — merch, made to order by Printful
+   Body: { items: [{ variantId, quantity }], source }
 ------------------------------------------------------- */
 router.post("/checkout/merch", async (req, res, next) => {
   try {
     if (!stripe) return res.status(500).json({ error: "Checkout isn't set up yet." });
-    if (!presaleOpen()) return res.status(400).json({ error: "The merch pre-sale isn't open right now." });
+    const catalog = await getMerch();
+    if (!catalog.length) return res.status(400).json({ error: "Merch isn't available right now." });
     const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 20) : [];
-    if (!items.length) return res.status(400).json({ error: "Your merch bag is empty." });
+    if (!items.length) return res.status(400).json({ error: "Your bag is empty." });
 
     const lines = [];
     for (const it of items) {
-      const product = findMerch(it.id);
-      if (!product) return res.status(400).json({ error: "An item in your bag isn't available anymore." });
+      const found = findVariant(catalog, it.variantId);
+      if (!found) return res.status(400).json({ error: "An item in your bag isn't available anymore. Please refresh and try again." });
       const qty = Math.floor(Number(it.quantity));
       if (!qty || qty < 1 || qty > 10) return res.status(400).json({ error: "Choose between 1 and 10 of each item." });
-      const size = clean(it.size, 10);
-      const color = clean(it.color, 30);
-      if (product.sizes?.length && !product.sizes.includes(size)) return res.status(400).json({ error: `Pick a size for ${product.name}.` });
-      if (product.colors?.length && !product.colors.includes(color)) return res.status(400).json({ error: `Pick a color for ${product.name}.` });
-      lines.push({ id: product.id, name: product.name, size, color, qty, cents: merchPrice(product) });
+      const { item, variant } = found;
+      lines.push({ productId: item.id, variantId: variant.id, name: item.name, size: variant.size, color: variant.color, qty, cents: variant.priceCents });
     }
     const subtotal = lines.reduce((s, l) => s + l.cents * l.qty, 0);
     const shipping = shippingFor(subtotal);
 
     const metadata = { shopKind: "merch", source: cleanSource(req.body?.source), shippingCents: String(shipping), lineCount: String(lines.length) };
     lines.forEach((l, i) => {
-      metadata[`m_${i}`] = JSON.stringify({ id: l.id, s: l.size, c: l.color, q: l.qty, p: l.cents });
+      metadata[`m_${i}`] = JSON.stringify({ v: l.variantId, i: l.productId, q: l.qty, p: l.cents });
     });
 
     const session = await stripe.checkout.sessions.create({
@@ -174,14 +174,14 @@ router.post("/checkout/merch", async (req, res, next) => {
           currency: "usd",
           product_data: {
             name: `${l.name}${l.size ? ` · ${l.size}` : ""}${l.color ? ` · ${l.color}` : ""}`,
-            description: "Pre-order. Made to order after the pre-sale closes.",
+            description: MERCH_SETTINGS.shipNote,
           },
           unit_amount: l.cents,
         },
         quantity: l.qty,
       })),
       success_url: `${SITE()}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${SITE()}/shop?cancelled=true`,
+      cancel_url: `${SITE()}/shop?cancelled=true#merch`,
       metadata,
     });
     res.status(201).json({ url: session.url });
@@ -339,6 +339,92 @@ router.get("/order/:sessionId", wrap(async (req, res) => {
   res.json({ type: "pending" }); // the webhook may still be on its way
 }));
 
+// Save a paid merch order in Printful as a draft (never confirmed automatically)
+const sendToPrintful = async (order) => {
+  if (!printfulReady()) {
+    order.printfulError = "Printful isn't connected yet";
+    await order.save();
+    return order;
+  }
+  try {
+    const pfOrder = await createDraftOrder(order);
+    order.printfulOrderId = String(pfOrder?.id || "");
+    order.printfulStatus = pfOrder?.status || "draft";
+    order.printfulError = "";
+    order.status = "draft";
+  } catch (err) {
+    console.error("Printful draft failed:", err.message);
+    order.printfulError = err.message.slice(0, 300);
+  }
+  await order.save();
+  return order;
+};
+
+/* -------------------------------------------------------
+   Printful webhook: shipping and status updates
+   Registered from the dashboard (Gifts & merch → Connect shipping updates).
+------------------------------------------------------- */
+const webhookKey = () =>
+  crypto.createHash("sha256").update(`printful:${process.env.PRINTFUL_API_KEY || ""}:${process.env.JWT_SECRET || ""}`).digest("hex").slice(0, 32);
+
+router.post("/printful/webhook/:key", wrap(async (req, res) => {
+  if (!printfulReady() || req.params.key !== webhookKey()) return res.status(404).end();
+  const { type, data = {} } = req.body || {};
+  const pfOrder = data.order || {};
+  const order = await MerchOrder.findOne(
+    pfOrder.external_id ? { orderNumber: pfOrder.external_id } : { printfulOrderId: String(pfOrder.id || "") }
+  );
+  if (!order) return res.json({ ok: true, unknown: true });
+  if (pfOrder.status) order.printfulStatus = pfOrder.status;
+
+  if (type === "order_updated" && ["pending", "inprocess", "partial", "onhold"].includes(pfOrder.status) && order.status !== "shipped") {
+    order.status = "ordered";
+  }
+  if (type === "order_canceled" || type === "order_failed") {
+    order.printfulError = type === "order_failed" ? (data.reason || "Printful couldn't fulfill this order") : "Canceled in Printful";
+    if (resend) {
+      await resend.emails.send({
+        from: "GFC Shop <noreply@grownfolkscollective.com>",
+        to: TEAM_EMAIL,
+        subject: `⚠️ Printful ${type === "order_failed" ? "failed" : "canceled"}: ${order.orderNumber}`,
+        html: `<p>${escapeHtml(order.printfulError)}</p><p>${escapeHtml(order.buyerName)} · ${escapeHtml(order.buyerEmail)}</p>`,
+      }).catch(() => {});
+    }
+  }
+  if (type === "package_shipped") {
+    const sh = data.shipment || {};
+    const firstTime = order.status !== "shipped";
+    order.status = "shipped";
+    order.tracking = {
+      carrier: sh.carrier || sh.service || "",
+      number: sh.tracking_number || "",
+      url: sh.tracking_url || "",
+      shippedAt: new Date(),
+    };
+    if (firstTime && resend && order.buyerEmail) {
+      const first = (order.buyerName || "").split(" ")[0] || "friend";
+      const track = order.tracking.url
+        ? `<p style="margin:24px 0;"><a href="${escapeHtml(order.tracking.url)}" style="background:#0E2340;color:#fff;padding:14px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">Track your package</a></p>`
+        : "";
+      await resend.emails.send({
+        from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
+        to: order.buyerEmail,
+        reply_to: TEAM_EMAIL,
+        subject: `📦 Your Grown Folks™ order shipped (${order.orderNumber})`,
+        html: `<div style="font-family:Arial,sans-serif;color:#0E2340;max-width:600px;margin:0 auto;padding:24px;background:#FAF7F0;">
+          <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">It's on the way, ${escapeHtml(first)}!</h2>
+          <p>Order <strong>${escapeHtml(order.orderNumber)}</strong> shipped${order.tracking.carrier ? ` with ${escapeHtml(order.tracking.carrier)}` : ""}.</p>
+          ${order.tracking.number ? `<p>Tracking number: <strong>${escapeHtml(order.tracking.number)}</strong></p>` : ""}${track}
+          <p>Questions? Just reply to this email.</p>
+          <p><img src="https://www.grownfolkscollective.com/email/gfc-logo.png" width="90" alt="Grown Folks Collective" style="display:block;width:90px;border-radius:50%;"></p>
+          <p style="font-family:Georgia,serif;font-style:italic;color:#9A7630;">Where grown folks come out to play.™</p></div>`,
+      }).catch((e) => console.error("Shipping email failed:", e.message));
+    }
+  }
+  await order.save();
+  res.json({ ok: true });
+}));
+
 /* -------------------------------------------------------
    Stripe webhook handler for shop payments.
    Called from POST /api/events/webhook/stripe when metadata.shopKind is set.
@@ -359,12 +445,22 @@ export const handleShopSession = async (session) => {
     const d = session.customer_details || {};
     const ship = session.shipping_details || session.collected_information?.shipping_details || {};
     const addr = ship.address || {};
+    const catalog = await getMerch();
     const items = [];
     for (let i = 0; i < Number(m.lineCount || 0); i++) {
       if (!m[`m_${i}`]) continue;
       const l = JSON.parse(m[`m_${i}`]);
-      const p = findMerch(l.id);
-      items.push({ productId: l.id, name: p?.name || l.id, size: l.s || "", color: l.c || "", quantity: l.q, priceCents: l.p, printful: p?.printful || "" });
+      const found = findVariant(catalog, l.v);
+      items.push({
+        productId: l.i || found?.item.id || "",
+        variantId: String(l.v || ""),
+        name: found?.item.name || "Merch item",
+        size: found?.variant.size || "",
+        color: found?.variant.color || "",
+        quantity: l.q,
+        priceCents: l.p,
+        printful: found?.variant.name || "",
+      });
     }
     let order;
     try {
@@ -388,16 +484,21 @@ export const handleShopSession = async (session) => {
         shippingCents: Number(m.shippingCents) || 0,
         totalPaidCents: session.amount_total || 0,
         source: m.source || "",
+        status: "paid",
       });
     } catch (err) {
       if (err?.code === 11000) return { duplicate: true };
       throw err;
     }
+    await sendToPrintful(order);
     if (resend) {
       const list = order.items
         .map((i) => `<li>${escapeHtml(i.name)}${i.size ? ` · ${escapeHtml(i.size)}` : ""}${i.color ? ` · ${escapeHtml(i.color)}` : ""} × ${i.quantity}</li>`)
         .join("");
       const first = (order.buyerName || "").split(" ")[0] || "friend";
+      const printfulLine = order.printfulOrderId
+        ? `<p>✅ Saved in Printful as draft #${escapeHtml(order.printfulOrderId)}. <strong>Open Printful → Orders and click Confirm</strong> to send it to production.</p>`
+        : `<p>⚠️ This order did NOT reach Printful (${escapeHtml(order.printfulError || "unknown error")}). Open the dashboard → Gifts &amp; merch and tap "Send to Printful", or place it by hand.</p>`;
       await Promise.all([
         order.buyerEmail &&
           resend.emails
@@ -405,13 +506,14 @@ export const handleShopSession = async (session) => {
               from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
               to: order.buyerEmail,
               reply_to: TEAM_EMAIL,
-              subject: `🛍️ Your GFC merch pre-order (${order.orderNumber})`,
+              subject: `🛍️ Your Grown Folks™ order (${order.orderNumber})`,
               html: `<div style="font-family:Arial,sans-serif;color:#0E2340;max-width:600px;margin:0 auto;padding:24px;background:#FAF7F0;">
-                <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">Thanks for your pre-order, ${escapeHtml(first)}!</h2>
+                <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">Thanks for your order, ${escapeHtml(first)}!</h2>
                 <p>Order <strong>${escapeHtml(order.orderNumber)}</strong></p><ul>${list}</ul>
                 <p>Total paid: <strong>${money(order.totalPaidCents)}</strong></p>
-                <p>Every item is made to order after the pre-sale closes. We'll email you a tracking number when it ships.</p>
+                <p>${escapeHtml(MERCH_SETTINGS.shipNote)} We'll email your tracking number when it ships.</p>
                 <p>Questions? Just reply to this email.</p>
+                <p><img src="https://www.grownfolkscollective.com/email/gfc-logo.png" width="90" alt="Grown Folks Collective" style="display:block;width:90px;border-radius:50%;"></p>
                 <p style="font-family:Georgia,serif;font-style:italic;color:#9A7630;">Where grown folks come out to play.™</p></div>`,
             })
             .catch((e) => console.error("Merch buyer email failed:", e.message)),
@@ -419,9 +521,9 @@ export const handleShopSession = async (session) => {
           .send({
             from: "GFC Shop <noreply@grownfolkscollective.com>",
             to: TEAM_EMAIL,
-            subject: `🛍️ Merch pre-order: ${order.buyerName || "New buyer"} (${money(order.totalPaidCents)})`,
-            html: `<div style="font-family:Arial,sans-serif;color:#0E2340;"><h2>🛍️ New merch pre-order ${escapeHtml(order.orderNumber)}</h2><ul>${list}</ul>
-              <p>${escapeHtml(order.shipping.name)}<br/>${escapeHtml(order.shipping.line1)} ${escapeHtml(order.shipping.line2)}<br/>${escapeHtml(order.shipping.city)}, ${escapeHtml(order.shipping.state)} ${escapeHtml(order.shipping.postalCode)}</p></div>`,
+            subject: `🛍️ Merch order: ${order.buyerName || "New buyer"} (${money(order.totalPaidCents)})${order.printfulOrderId ? "" : " ⚠️ not in Printful"}`,
+            html: `<div style="font-family:Arial,sans-serif;color:#0E2340;"><h2>🛍️ New merch order ${escapeHtml(order.orderNumber)}</h2><ul>${list}</ul>
+              <p>${escapeHtml(order.shipping.name)}<br/>${escapeHtml(order.shipping.line1)} ${escapeHtml(order.shipping.line2)}<br/>${escapeHtml(order.shipping.city)}, ${escapeHtml(order.shipping.state)} ${escapeHtml(order.shipping.postalCode)}</p>${printfulLine}</div>`,
           })
           .catch((e) => console.error("Merch team email failed:", e.message)),
       ]);
@@ -553,12 +655,32 @@ router.patch("/admin/cards/:id", ...admin, wrap(async (req, res) => {
 
 router.get("/admin/merch-orders", ...admin, wrap(async (req, res) => {
   const orders = await MerchOrder.find({}).sort({ createdAt: -1 }).limit(1000).lean();
-  res.json({ orders, merch: publicMerch() });
+  res.json({ orders, merch: await merchStatus() });
+}));
+
+// Try again to save an order in Printful as a draft
+router.post("/admin/merch-orders/:id/printful", ...admin, wrap(async (req, res) => {
+  const order = await MerchOrder.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found." });
+  if (order.printfulOrderId) return res.status(400).json({ error: "This order is already in Printful." });
+  await sendToPrintful(order);
+  if (!order.printfulOrderId) return res.status(502).json({ error: `Printful said: ${order.printfulError}` });
+  res.json(order);
+}));
+
+// Check the Printful connection and turn on shipping updates (tracking emails)
+router.post("/admin/printful/connect", ...admin, wrap(async (req, res) => {
+  if (!printfulReady()) return res.status(400).json({ error: "Add PRINTFUL_API_KEY in Railway first, then try again." });
+  const store = await storeInfo();
+  const base = process.env.BACKEND_URL || `${req.protocol}://${req.get("host")}`;
+  await registerWebhook(`${base.replace(/\/$/, "")}/api/shop/printful/webhook/${webhookKey()}`);
+  const status = await merchStatus();
+  res.json({ ok: true, store, ...status });
 }));
 
 router.patch("/admin/merch-orders/:id", ...admin, wrap(async (req, res) => {
   const set = {};
-  if (["preorder", "ordered", "shipped", "cancelled"].includes(req.body?.status)) set.status = req.body.status;
+  if (["paid", "draft", "preorder", "ordered", "shipped", "cancelled"].includes(req.body?.status)) set.status = req.body.status;
   if (typeof req.body?.adminNotes === "string") set.adminNotes = req.body.adminNotes.slice(0, 1000);
   const order = await MerchOrder.findByIdAndUpdate(req.params.id, { $set: set }, { new: true });
   if (!order) return res.status(404).json({ error: "Order not found." });
