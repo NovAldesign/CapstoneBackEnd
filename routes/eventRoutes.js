@@ -941,6 +941,126 @@ router.post('/webhook/stripe', async (req, res, next) => {
 });
 
 /* -------------------------------------------------------
+   Pull one event from Eventbrite into the website (tickets, prices, dates).
+   Used by the Eventbrite webhook and the dashboard's "Sync from Eventbrite" button.
+   Returns the updated event, or null if Eventbrite didn't return it.
+------------------------------------------------------- */
+const syncEventbriteEvent = async (eventId, TOKEN) => {
+  const { eventData: ebEvent, structuredData } = await fetchEventbriteFullData(eventId, TOKEN);
+
+  if (!ebEvent) {
+    console.error(`Failed to fetch Eventbrite data for event: ${eventId}`);
+    return null;
+  }
+
+  // Find existing DB record to preserve FAQs, highlights, agenda, ticket IDs, and website sales
+  const existingEvent = await Event.findOne({ eventbriteId: ebEvent.id }).lean();
+
+  const toDate = makeDateConverter(ebEvent);
+
+  const formattedTicketTypes = (ebEvent.ticket_classes || []).map((tc) => {
+    // Keep the same ticket ID and the website's own sales count
+    const existing = existingEvent?.ticketTypes?.find((t) => t.name === tc.name);
+    const websiteSold = existing?.websiteSold ??
+      Math.max(0, (existing?.sold || 0) - (tc.quantity_sold || 0));
+
+    return {
+      ...(existing?._id && { _id: existing._id }),
+      name:         tc.name || 'General Admission Pass',
+      price:        tc.cost ? (tc.cost.value / 100) : 0,
+      quantity:     tc.quantity_total || 36,
+      sold:         (tc.quantity_sold || 0) + websiteSold,
+      websiteSold,
+      description:  tc.description || '',
+      salesStart:   toDate(tc.sales_start),
+      salesEnd:     toDate(tc.sales_end),
+      onSaleStatus: tc.on_sale_status || '',
+      hidden:       !!tc.hidden
+    };
+  });
+
+  const agendaFromStructured  = parseAgenda(structuredData);
+  const highlightsFromEvent   = parseHighlights(ebEvent);
+
+  const syncPayload = {
+    name:        ebEvent.name?.text || 'Untitled Gathering',
+    description: ebEvent.description?.html || 'No description provided.',
+    date:        new Date(ebEvent.start?.utc || Date.now()),
+    endDate:     new Date(ebEvent.end?.utc   || Date.now() + 3 * 60 * 60 * 1000),
+    location: {
+      name:    ebEvent.venue?.name                 || 'Atlanta Curated Location',
+      address: ebEvent.venue?.address?.address_1   || '',
+      city:    ebEvent.venue?.address?.city        || 'Atlanta',
+      state:   ebEvent.venue?.address?.region      || 'GA',
+      zip:     ebEvent.venue?.address?.postal_code || ''
+    },
+    status:      ebEvent.status === 'live' ? 'published' : 'draft',
+    capacity:    ebEvent.capacity || 36,
+    ticketTypes: formattedTicketTypes,
+
+    // Only overwrite agenda/highlights/faqs if the DB has none saved yet
+    ...(!existingEvent?.agenda?.length     && agendaFromStructured.length  && { agenda:     agendaFromStructured }),
+    ...(!existingEvent?.highlights?.length && highlightsFromEvent.length   && { highlights: highlightsFromEvent }),
+    ...(!existingEvent?.faqs?.length && {
+      faqs: [
+        { question: "What is your refund policy?", answer: "All sales are final. Tickets are non-refundable but may be transferred to another eligible guest up to 24 hours before the event." },
+        { question: "Can I transfer my ticket?",   answer: "Yes. Entry passes can be transferred to another verified individual up to 24 hours prior to the event start time." }
+      ]
+    }),
+
+    ...(ebEvent.logo?.original?.url && { coverImage: ebEvent.logo.original.url })
+  };
+
+  const updatedDocument = await Event.findOneAndUpdate(
+    { eventbriteId: ebEvent.id },
+    { $set: syncPayload },
+    { new: true, upsert: true }
+  );
+
+  console.log(`Synced: "${updatedDocument.name}" | Tickets: ${updatedDocument.ticketTypes.length} | Agenda: ${updatedDocument.agenda?.length || 0} | FAQs: ${updatedDocument.faqs?.length || 0}`);
+  return updatedDocument;
+};
+
+/* -------------------------------------------------------
+   POST /api/events/admin/sync-eventbrite   (Admin)
+   Body: { eventId } to sync one website event, or nothing to sync every upcoming
+   event linked to Eventbrite. Use when a new ticket type doesn't show on the site.
+------------------------------------------------------- */
+router.post('/admin/sync-eventbrite', protect, restrictTo('admin'), async (req, res) => {
+  try {
+    const TOKEN = process.env.EVENTBRITE_PRIVATE_TOKEN;
+    if (!TOKEN) return res.status(500).json({ error: 'The Eventbrite token is missing in Railway (EVENTBRITE_PRIVATE_TOKEN).' });
+
+    const one = req.body?.eventId;
+    const filter = one ? { _id: one } : { date: { $gte: new Date() }, status: { $ne: 'cancelled' } };
+    const events = await Event.find(filter).select('name date eventbriteId status').sort({ date: 1 }).lean();
+    if (one && !events.length) return res.status(404).json({ error: 'Event not found.' });
+
+    const results = [];
+    for (const ev of events) {
+      if (!ev.eventbriteId) {
+        results.push({ id: String(ev._id), name: ev.name, date: ev.date, ok: false, linked: false,
+          note: 'Not linked to Eventbrite. Its tickets are set in the dashboard.' });
+        continue;
+      }
+      try {
+        const updated = await syncEventbriteEvent(String(ev.eventbriteId), TOKEN);
+        results.push(updated
+          ? { id: String(updated._id), name: updated.name, date: updated.date, ok: true, linked: true,
+              tickets: (updated.ticketTypes || []).map((t) => ({ name: t.name, price: t.price, hidden: !!t.hidden, onSaleStatus: t.onSaleStatus })) }
+          : { id: String(ev._id), name: ev.name, date: ev.date, ok: false, linked: true, note: "Eventbrite didn't return this event. Check that it's still live there." });
+      } catch (e) {
+        results.push({ id: String(ev._id), name: ev.name, date: ev.date, ok: false, linked: true, note: e.message });
+      }
+    }
+    res.json({ results });
+  } catch (err) {
+    console.error('Eventbrite manual sync error:', err.message);
+    res.status(500).json({ error: "Couldn't sync from Eventbrite. Please try again." });
+  }
+});
+
+/* -------------------------------------------------------
    POST /api/events/webhook/eventbrite
    Public — Automated Background Sync from Eventbrite
 ------------------------------------------------------- */
@@ -1028,78 +1148,8 @@ router.post('/webhook/eventbrite', async (req, res, next) => {
       }
       const eventId = eventIdMatch[1];
 
-      const { eventData: ebEvent, structuredData } = await fetchEventbriteFullData(eventId, TOKEN);
-
-      if (!ebEvent) {
-        console.error(`Failed to fetch Eventbrite data for event: ${eventId}`);
-        return res.status(400).send('Failed to fetch resource state');
-      }
-
-      // Find existing DB record to preserve FAQs, highlights, agenda, ticket IDs, and website sales
-      const existingEvent = await Event.findOne({ eventbriteId: ebEvent.id }).lean();
-
-      const toDate = makeDateConverter(ebEvent);
-
-      const formattedTicketTypes = (ebEvent.ticket_classes || []).map((tc) => {
-        // Keep the same ticket ID and the website's own sales count
-        const existing = existingEvent?.ticketTypes?.find((t) => t.name === tc.name);
-        const websiteSold = existing?.websiteSold ??
-          Math.max(0, (existing?.sold || 0) - (tc.quantity_sold || 0));
-
-        return {
-          ...(existing?._id && { _id: existing._id }),
-          name:         tc.name || 'General Admission Pass',
-          price:        tc.cost ? (tc.cost.value / 100) : 0,
-          quantity:     tc.quantity_total || 36,
-          sold:         (tc.quantity_sold || 0) + websiteSold,
-          websiteSold,
-          description:  tc.description || '',
-          salesStart:   toDate(tc.sales_start),
-          salesEnd:     toDate(tc.sales_end),
-          onSaleStatus: tc.on_sale_status || '',
-          hidden:       !!tc.hidden
-        };
-      });
-
-      const agendaFromStructured  = parseAgenda(structuredData);
-      const highlightsFromEvent   = parseHighlights(ebEvent);
-
-      const syncPayload = {
-        name:        ebEvent.name?.text || 'Untitled Gathering',
-        description: ebEvent.description?.html || 'No description provided.',
-        date:        new Date(ebEvent.start?.utc || Date.now()),
-        endDate:     new Date(ebEvent.end?.utc   || Date.now() + 3 * 60 * 60 * 1000),
-        location: {
-          name:    ebEvent.venue?.name                 || 'Atlanta Curated Location',
-          address: ebEvent.venue?.address?.address_1   || '',
-          city:    ebEvent.venue?.address?.city        || 'Atlanta',
-          state:   ebEvent.venue?.address?.region      || 'GA',
-          zip:     ebEvent.venue?.address?.postal_code || ''
-        },
-        status:      ebEvent.status === 'live' ? 'published' : 'draft',
-        capacity:    ebEvent.capacity || 36,
-        ticketTypes: formattedTicketTypes,
-
-        // Only overwrite agenda/highlights/faqs if the DB has none saved yet
-        ...(!existingEvent?.agenda?.length     && agendaFromStructured.length  && { agenda:     agendaFromStructured }),
-        ...(!existingEvent?.highlights?.length && highlightsFromEvent.length   && { highlights: highlightsFromEvent }),
-        ...(!existingEvent?.faqs?.length && {
-          faqs: [
-            { question: "What is your refund policy?", answer: "All sales are final. Tickets are non-refundable but may be transferred to another eligible guest up to 24 hours before the event." },
-            { question: "Can I transfer my ticket?",   answer: "Yes. Entry passes can be transferred to another verified individual up to 24 hours prior to the event start time." }
-          ]
-        }),
-
-        ...(ebEvent.logo?.original?.url && { coverImage: ebEvent.logo.original.url })
-      };
-
-      const updatedDocument = await Event.findOneAndUpdate(
-        { eventbriteId: ebEvent.id },
-        { $set: syncPayload },
-        { new: true, upsert: true }
-      );
-
-      console.log(`Synced: "${updatedDocument.name}" | Tickets: ${updatedDocument.ticketTypes.length} | Agenda: ${updatedDocument.agenda?.length || 0} | FAQs: ${updatedDocument.faqs?.length || 0}`);
+      const updatedDocument = await syncEventbriteEvent(eventId, TOKEN);
+      if (!updatedDocument) return res.status(400).send('Failed to fetch resource state');
     }
 
     return res.status(200).json({ received: true });
