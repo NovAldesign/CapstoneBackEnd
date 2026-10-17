@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import Event from '../models/eventSchema.js';
 import Order from '../models/orderSchema.js';
 import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders.js';
+import { isPlusOne, guestsPerTicket, plusOneMemberCents, plusOneAllowed } from '../utilities/plusOne.js';
 import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail } from '../utilities/promoCodes.js';
 import crypto from 'crypto';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
@@ -391,10 +392,21 @@ router.post('/checkout', async (req, res, next) => {
         return res.status(400).json({ error: `Only ${remaining} "${ticket.name}" ticket${remaining === 1 ? '' : 's'} left for "${event.name}".` });
       }
 
+      // Plus One (buy 2, save $8) isn't offered for food events
+      const plusOne = isPlusOne(ticket.name);
+      if (plusOne && !plusOneAllowed(event.name)) {
+        return res.status(400).json({ error: `The Plus One deal isn't available for "${event.name}". Please remove it and add regular tickets.` });
+      }
+
         const fullPriceInCents = Math.round(ticket.price * 100);
       const codeApplies = promo ? promoAppliesToEvent(promo, event) : false;
-      // Member price first, then codes and the bundle discount
-      const startPriceInCents = memberPricing ? memberPriceCents(member.tier, fullPriceInCents, event.name) : fullPriceInCents;
+      // Member price first, then codes and the bundle discount.
+      // Plus One for members: whichever is cheaper, the Plus One price or 2 tickets at member price.
+      const startPriceInCents = !memberPricing
+        ? fullPriceInCents
+        : plusOne
+          ? plusOneMemberCents(member.tier, fullPriceInCents, event.name)
+          : memberPriceCents(member.tier, fullPriceInCents, event.name);
       memberSavingsCents += (fullPriceInCents - startPriceInCents) * qty;
 
       verifiedItems.push({
@@ -405,12 +417,20 @@ router.post('/checkout', async (req, res, next) => {
         ticketTypeName: ticket.name,
         priceInCents:   startPriceInCents,
         quantity:       qty,
+        guests:         guestsPerTicket(ticket.name),
         codeApplies
       });
     }
 
+    // Plus One orders take no other discounts. Artist and tracking codes still count toward
+    // the performer's sales (no discount); discount codes have to come out of the bag.
+    const hasPlusOne = verifiedItems.some((i) => i.guests > 1);
+    if (hasPlusOne && promo && promo.type !== 'tracking' && promo.source !== 'artist') {
+      return res.status(400).json({ error: `The Plus One deal can't be combined with other discounts. Remove ${promo.code.toUpperCase()} from your bag to keep your Plus One price.` });
+    }
+
     // Apply the code: to every eligible ticket, or to just one ticket for "once per order" codes
-    if (promo) {
+    if (promo && !hasPlusOne) {
       const onceItem = promo.oncePerOrder ? verifiedItems.find((i) => i.codeApplies) : null;
       if (onceItem && onceItem.quantity > 1) {
         // split off one discounted ticket; the rest stay full price
@@ -437,7 +457,9 @@ router.post('/checkout', async (req, res, next) => {
     let discountMultiplier = 1.0;
     let discountLabel = '';
 
-    if (uniqueEventCount === 2) {
+    if (hasPlusOne) {
+      // no bundle discount on Plus One orders
+    } else if (uniqueEventCount === 2) {
       discountMultiplier = 0.95;
       discountLabel = ' (5% Multi-Event Bundle Discount Applied)';
     } else if (uniqueEventCount >= 3) {
@@ -450,9 +472,11 @@ router.post('/checkout', async (req, res, next) => {
         currency: 'usd',
         product_data: {
           name: `${item.eventName} — ${item.ticketTypeName}`,
-          description: discountMultiplier < 1.0
-            ? `Ending social isolation.${discountLabel}`
-            : 'Standard Community Event Admission Pass',
+          description: item.guests > 1
+            ? `Plus One deal: admits ${item.guests} guests. Other discounts don't combine with this deal.`
+            : discountMultiplier < 1.0
+              ? `Ending social isolation.${discountLabel}`
+              : 'Standard Community Event Admission Pass',
         },
         unit_amount: Math.round(item.priceInCents * discountMultiplier),
       },
@@ -524,6 +548,7 @@ router.post('/checkout', async (req, res, next) => {
         ticketTypeId: item.ticketTypeId,
         ticketName:   item.ticketTypeName.slice(0, 80),
         qty:          item.quantity,
+        ...(item.guests > 1 && { guests: item.guests }),
         pricePaid:    Math.round(item.priceInCents * discountMultiplier)
       });
     });

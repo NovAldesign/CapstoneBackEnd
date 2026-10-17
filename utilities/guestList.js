@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { guestsPerTicket } from "./plusOne.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import GuestEntry from "../models/guestEntrySchema.js";
 import CheckIn from "../models/checkInSchema.js";
@@ -52,7 +53,7 @@ export const fetchEventbriteOrders = async (eventbriteId) => {
           paidCents: 0,
           boughtAt: a.created,
         };
-        o.tickets += Number(a.quantity) || 1;
+        o.tickets += (Number(a.quantity) || 1) * guestsPerTicket(a.ticket_class_name); // Plus One = 2 people
         if (a.ticket_class_name) o.ticketNames.add(a.ticket_class_name);
         o.paidCents += Number(a.costs?.gross?.value) || 0;
         byOrder.set(id, o);
@@ -126,7 +127,8 @@ export const buildGuestList = async (event, { includeEventbrite = true } = {}) =
         name: o.buyerName || o.buyerEmail || "Website guest",
         email: o.buyerEmail || "",
         phone: o.buyerPhone || "",
-        tickets: Number(item.quantity) || 1,
+        // Plus One tickets admit 2 people
+        tickets: (Number(item.quantity) || 1) * (Number(item.guests) || guestsPerTicket(item.ticketName)),
         ticketName: item.ticketName || "",
         paidCents: (Number(item.pricePaidEachCents) || 0) * (Number(item.quantity) || 1),
         source: "website",

@@ -42,7 +42,7 @@ const codeSalesByEvent = async (codes = null) => {
   const rows = await TicketOrder.aggregate([
     { $match: match },
     { $unwind: "$items" },
-    { $group: { _id: { code: "$promoCode", eventId: "$items.eventId" }, tickets: { $sum: "$items.quantity" } } },
+    { $group: { _id: { code: "$promoCode", eventId: "$items.eventId" }, tickets: { $sum: { $multiply: ["$items.quantity", { $ifNull: ["$items.guests", 1] }] } } } },
   ]);
   const map = new Map();
   rows.forEach((r) => map.set(`${r._id.code}|${r._id.eventId}`, r.tickets));
@@ -316,7 +316,8 @@ const codeUsage = async () => {
       $group: {
         _id: "$promoCode",
         orders: { $sum: 1 },
-        tickets: { $sum: { $sum: "$items.quantity" } },
+        // Plus One tickets count as 2
+        tickets: { $sum: { $sum: { $map: { input: "$items", as: "i", in: { $multiply: ["$$i.quantity", { $ifNull: ["$$i.guests", 1] }] } } } } },
         lastUsed: { $max: "$createdAt" },
       },
     },

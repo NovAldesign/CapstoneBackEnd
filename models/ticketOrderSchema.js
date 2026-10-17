@@ -10,6 +10,7 @@ const TicketOrderItemSchema = new mongoose.Schema(
     ticketTypeId: { type: String, default: "" },
     ticketName: { type: String, default: "" },
     quantity: { type: Number, required: true, min: 1 },
+    guests: { type: Number, default: 1 }, // people per ticket (Plus One = 2)
     pricePaidEachCents: { type: Number, default: 0 },
   },
   { _id: false }

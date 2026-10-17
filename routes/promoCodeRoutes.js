@@ -86,6 +86,8 @@ router.post("/validate", async (req, res) => {
       oncePerOrder: Boolean(promo.oncePerOrder),
       firstTimeOnly: Boolean(promo.firstTimeOnly),
       needsEmail: promoNeedsEmail(promo),
+      // Artist and tracking codes still work with the Plus One deal (credit only, no discount)
+      worksWithPlusOne: promo.type === "tracking" || promo.source === "artist",
     });
   } catch (err) {
     console.error("Promo validate error:", err.message);
@@ -121,7 +123,7 @@ router.get("/report", async (req, res) => {
     const sections = [...byCode.entries()]
       .map(([code, info]) => {
         const tickets = info.orders.reduce(
-          (sum, o) => sum + (o.items || []).reduce((s, i) => s + (i.quantity || 0), 0),
+          (sum, o) => sum + (o.items || []).reduce((s, i) => s + (i.quantity || 0) * (i.guests || 1), 0),
           0
         );
         const revenue = info.orders.reduce((sum, o) => sum + (o.totalPaidCents || 0), 0);

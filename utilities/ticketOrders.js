@@ -144,6 +144,7 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
       ticketTypeId: String(item.ticketTypeId || ""),
       ticketName: item.ticketName || "",
       quantity: Number(item.qty) || 1,
+      guests: Number(item.guests) || 1, // Plus One = 2 people per ticket
       pricePaidEachCents: Number(item.pricePaid) || 0,
     };
   });
@@ -167,6 +168,7 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
         .map(
           (i) =>
             `<li style="margin:0 0 4px;">${escapeHtml(i.ticketName)} × ${i.quantity}` +
+            (i.guests > 1 ? ` <strong>(admits ${i.guests} each)</strong>` : "") +
             ` <span style="color:#666;">(${money(i.pricePaidEachCents)} each)</span></li>`
         )
         .join("");
