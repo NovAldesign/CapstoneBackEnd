@@ -19,6 +19,11 @@ import { PROMO_CODES, normalizeCode, describePromo, isLive } from "../utilities/
 import { approveApplication, declineApplication } from "./artistRoutes.js";
 import GuestEntry, { GUEST_SOURCES } from "../models/guestEntrySchema.js";
 import { buildGuestList, setCheckIn, doorKey, clearEventbriteCache } from "../utilities/guestList.js";
+import {
+  PLATFORMS, MAX_OPTIONS, MAX_QUESTIONS, TIME_ZONE,
+  newLiveToken, liveLink, parseEtLocal, toEtLocal, fmtLiveWhen, defaultQuestions, sendLiveConfirmation,
+} from "../utilities/liveSetup.js";
+import { socialHandle } from "./artistRoutes.js";
 
 // ── Admin dashboard API: /api/admin-hub (admin login required, see server.js) ──
 const router = express.Router();
@@ -105,8 +110,11 @@ router.get("/inbox", async (req, res) => {
       ...reviews.map((r) => ({ type: "review", tab: "reviews", id: String(r._id), title: r.name, detail: `${r.rating}★ review waiting for approval`, createdAt: r.createdAt })),
     ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+    const todaysLives = await livesToday().catch(() => []);
     res.json({
+      livesToday: todaysLives,
       counts: {
+        livesToday: todaysLives.length,
         artists: artists.filter((a) => a.role !== "host").length,
         hosts: artists.filter((a) => a.role === "host").length,
         perks: perks.length,
@@ -945,6 +953,164 @@ router.post("/crm/brevo", async (req, res) => {
   } catch (err) {
     console.error("CRM Brevo bulk error:", err.message);
     res.status(500).json({ error: "Couldn't save. Please try again." });
+  }
+});
+
+/* =======================================================
+   LIVES: Instagram/TikTok Lives with booked artists and hosts
+   Set date choices + questions → copy their private link → they pick a date
+   and platform and get a confirmation. On the day, the questions are here.
+======================================================= */
+const ymdEt = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
+
+const livePerson = (a, event) => {
+  const live = a.live || {};
+  return {
+    id: String(a._id),
+    role: a.role || "artist",
+    artistName: a.artistName,
+    name: fullName(a),
+    email: a.email,
+    phone: a.phone,
+    headshotUrl: a.headshotUrl,
+    instagram: socialHandle(a.instagram),
+    tiktok: socialHandle(a.tiktok),
+    code: a.promoCode,
+    event: event ? { id: String(event._id), name: event.name, date: event.date } : null,
+    live: {
+      status: live.status || "",
+      link: live.token ? liveLink(a) : "",
+      options: (live.options || []).map((d) => ({ value: toEtLocal(d), label: fmtLiveWhen(d) })),
+      questions: live.questions || [],
+      notes: live.notes || [],
+      date: live.date || null,
+      dateValue: toEtLocal(live.date),
+      dateLabel: live.date ? fmtLiveWhen(live.date) : "",
+      today: Boolean(live.date && ymdEt(live.date) === ymdEt(new Date())),
+      platform: live.platform || "",
+      handle: live.handle || "",
+      livePhone: live.phone || "",
+      plug: live.plug || "",
+      extraQuestion: live.extraQuestion || "",
+      customRequest: live.customRequest || "",
+      invitedAt: live.invitedAt,
+      confirmedAt: live.confirmedAt,
+      confirmationSentAt: live.confirmationSentAt,
+    },
+    defaultQuestions: defaultQuestions(a, event),
+  };
+};
+
+// Lives happening today (also shown on the Today tab)
+const livesToday = async () => {
+  const start = new Date(Date.now() - 18 * 60 * 60 * 1000);
+  const end = new Date(Date.now() + 30 * 60 * 60 * 1000);
+  const apps = await ArtistApplication.find({ "live.status": "confirmed", "live.date": { $gte: start, $lte: end } }).lean();
+  const ids = apps.map((a) => a.eventId).filter(isId);
+  const events = new Map((await Event.find({ _id: { $in: ids } }).select("name date").lean()).map((e) => [String(e._id), e]));
+  return apps
+    .map((a) => livePerson(a, events.get(String(a.eventId))))
+    .filter((p) => p.live.today)
+    .sort((x, y) => new Date(x.live.date) - new Date(y.live.date));
+};
+
+router.get("/lives", async (req, res) => {
+  try {
+    const since = new Date(Date.now() - 2 * DAY);
+    const events = (await Event.find({ status: { $ne: "cancelled" }, date: { $gte: since } })
+      .sort({ date: 1 }).select("name date").lean()).filter((e) => MUSIC_EVENT.test(e.name || ""));
+    const byId = new Map(events.map((e) => [String(e._id), e]));
+    const apps = await ArtistApplication.find({
+      status: "approved",
+      $or: [{ eventId: { $in: [...byId.keys()] } }, { "live.date": { $gte: since } }],
+    }).lean();
+    const allIds = apps.map((a) => a.eventId).filter((id) => isId(id) && !byId.has(String(id)));
+    if (allIds.length) (await Event.find({ _id: { $in: allIds } }).select("name date").lean()).forEach((e) => byId.set(String(e._id), e));
+
+    const people = apps
+      .map((a) => livePerson(a, byId.get(String(a.eventId))))
+      .sort((x, y) =>
+        new Date(x.live.date || x.event?.date || 0) - new Date(y.live.date || y.event?.date || 0));
+    res.json({ people, platforms: PLATFORMS, maxOptions: MAX_OPTIONS, maxQuestions: MAX_QUESTIONS });
+  } catch (err) {
+    console.error("Admin lives error:", err.message);
+    res.status(500).json({ error: "Couldn't load Lives." });
+  }
+});
+
+// Set up or edit a Live: date choices, questions, and (optionally) the final date + platform
+router.post("/lives/:id", async (req, res) => {
+  try {
+    const application = await findApplication(req.params.id);
+    if (!application || application.status !== "approved") return res.status(404).json({ error: "Booked artist not found." });
+    const b = req.body || {};
+    const live = application.live;
+    const now = Date.now();
+
+    if (Array.isArray(b.options)) {
+      const options = b.options.map(parseEtLocal).filter((d) => d && d.getTime() > now).slice(0, MAX_OPTIONS);
+      if (!options.length && !b.date) return res.status(400).json({ error: "Add at least one date in the future." });
+      live.options = options;
+    }
+    if (Array.isArray(b.questions)) {
+      const questions = b.questions.map((q) => clean(q, 300)).filter(Boolean).slice(0, MAX_QUESTIONS);
+      if (!questions.length) return res.status(400).json({ error: "Add at least one question." });
+      // Keep their notes lined up with questions that didn't change
+      const oldNotes = new Map((live.questions || []).map((q, i) => [q, (live.notes || [])[i] || ""]));
+      live.notes = questions.map((q) => oldNotes.get(q) || "");
+      live.questions = questions;
+    }
+
+    // You set the final date yourself (they replied by email, or none of the dates worked)
+    let sendEmail = false;
+    if (b.date) {
+      const date = parseEtLocal(b.date);
+      if (!date) return res.status(400).json({ error: "That date doesn't look right." });
+      if (b.platform && !PLATFORMS[b.platform]) return res.status(400).json({ error: "Pick Instagram or TikTok." });
+      if (b.platform) live.platform = b.platform;
+      if (typeof b.handle === "string") live.handle = socialHandle(b.handle);
+      if (!live.platform) return res.status(400).json({ error: "Pick Instagram or TikTok for this Live." });
+      const changed = !live.date || new Date(live.date).getTime() !== date.getTime();
+      live.date = date;
+      live.status = "confirmed";
+      live.confirmedAt = live.confirmedAt || new Date();
+      live.customRequest = "";
+      sendEmail = b.sendConfirmation !== false && (changed || b.sendConfirmation === true);
+    }
+
+    if (!live.token) live.token = newLiveToken();
+    if (!live.status) { live.status = "invited"; live.invitedAt = new Date(); }
+    await application.save();
+
+    let emailSent = false;
+    if (sendEmail) {
+      const event = isId(application.eventId) ? await Event.findById(application.eventId).select("name date").lean() : null;
+      try {
+        emailSent = await sendLiveConfirmation(application, event, { updated: Boolean(live.confirmationSentAt) });
+        if (emailSent) { live.confirmationSentAt = new Date(); await application.save(); }
+      } catch (e) {
+        console.error("Admin live confirmation email error:", e.message);
+      }
+    }
+    const event = isId(application.eventId) ? await Event.findById(application.eventId).select("name date").lean() : null;
+    res.json({ ok: true, emailSent, person: livePerson(application.toObject(), event) });
+  } catch (err) {
+    console.error("Admin live save error:", err.message);
+    res.status(500).json({ error: "Couldn't save the Live. Please try again." });
+  }
+});
+
+// Clear a Live (cancelled, or start over). The old link stops working.
+router.delete("/lives/:id", async (req, res) => {
+  try {
+    const application = await findApplication(req.params.id);
+    if (!application) return res.status(404).json({ error: "Not found." });
+    application.live = {};
+    await application.save();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Admin live clear error:", err.message);
+    res.status(500).json({ error: "Couldn't clear it." });
   }
 });
 

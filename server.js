@@ -32,6 +32,7 @@ import subscriberRoutes from "./routes/subscriberRoutes.js"; //Added Subscriber 
 import groupBookingRoutes from "./routes/groupBookingRoutes.js"; // Group & birthday bookings
 import promoCodeRoutes from "./routes/promoCodeRoutes.js"; // Ticket codes (artists, referrals, discounts)
 import artistRoutes from "./routes/artistRoutes.js"; // Artist applications + Meet the Artists
+import liveRoutes from "./routes/liveRoutes.js"; // Artists pick their Instagram/TikTok Live date (/live-setup)
 import scoutRoutes from "./routes/scoutRoutes.js"; // Industry scout sign-ups (/scouts)
 import hostingRoutes from "./routes/hostingRoutes.js"; // Play. Sip. Toast. hosting requests (/host page)
 import reviewRoutes from "./routes/reviewRoutes.js"; // Guest reviews for the home page
@@ -133,6 +134,7 @@ app.use("/api/subscribers", subscriberRoutes);
 app.use("/api/group-bookings", groupBookingRoutes);
 app.use("/api/promo-codes", promoCodeRoutes);
 app.use("/api/artists", artistRoutes);
+app.use("/api/lives", liveRoutes);
 app.use("/api/scouts", scoutRoutes);
 app.use("/api/hosting", hostingRoutes);
 app.use("/api/reviews", reviewRoutes);

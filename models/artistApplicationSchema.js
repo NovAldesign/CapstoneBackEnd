@@ -58,6 +58,27 @@ const artistApplicationSchema = new mongoose.Schema(
     adminNotes: { type: String, default: "", trim: true },
     // Hide from the "On Our Stage" gallery on the Perform pages (still shows on their event page)
     galleryHidden: { type: Boolean, default: false },
+
+    // Instagram/TikTok Live before the show. Set up in the dashboard (Lives tab);
+    // the artist picks a date and platform on their private /live-setup link.
+    live: {
+      token: { type: String, default: "" },
+      // "" = not set up · invited = link sent · confirmed = date picked · needs-date = none of the dates worked
+      status: { type: String, enum: ["", "invited", "confirmed", "needs-date"], default: "" },
+      options: [{ type: Date }], // date choices offered
+      questions: [{ type: String, trim: true }], // what we'll ask on the Live
+      notes: [{ type: String, trim: true }], // their optional talking points, one per question
+      date: { type: Date, default: null },
+      platform: { type: String, enum: ["", "instagram", "tiktok"], default: "" },
+      handle: { type: String, default: "", trim: true },
+      phone: { type: String, default: "", trim: true },
+      plug: { type: String, default: "", trim: true }, // what they want to promote
+      extraQuestion: { type: String, default: "", trim: true }, // a question they'd love to be asked
+      customRequest: { type: String, default: "", trim: true }, // other times that work, when none did
+      invitedAt: { type: Date, default: null },
+      confirmedAt: { type: Date, default: null },
+      confirmationSentAt: { type: Date, default: null },
+    },
   },
   { timestamps: true }
 );
