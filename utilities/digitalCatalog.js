@@ -15,6 +15,14 @@ export const LICENSE =
 export const GUIDE = "Karaoke-Bingo-Host-Guide.pdf";
 const pdf = (id) => `karaoke-bingo-${id}.pdf`;
 const GENRES = ["rnb", "hiphop", "pop", "rock", "country", "gospel", "motown", "discofunk"];
+// Extra host files that come with an edition (and with any bundle that includes it)
+const EXTRAS = {
+  rnb: ["name-that-tune-host-sheet-rnb.pdf"],
+};
+const EXTRA_LABELS = {
+  "name-that-tune-host-sheet-rnb.pdf": "Name That Tune Host Sheet (R&B)",
+};
+const withExtras = (id) => [pdf(id), ...(EXTRAS[id] || [])];
 const HOLIDAYS = ["christmas", "newyears", "valentines", "mothersday", "juneteenth", "july4", "halloween", "thanksgiving"];
 
 const single = (id, edition, hunt, group) => ({
@@ -24,7 +32,7 @@ const single = (id, edition, hunt, group) => ({
   name: `Karaoke Bingo: ${edition}`,
   description: `40 unique print-ready cards, host guide included. Hunt songs: ${hunt}.`,
   priceCents: 1200,
-  files: [pdf(id), GUIDE],
+  files: [...withExtras(id), GUIDE],
 });
 
 export const DIGITAL = [
@@ -51,7 +59,7 @@ export const DIGITAL = [
     name: "Karaoke Bingo: Genre Series (8 Editions)",
     description: "All 8 genre editions, 320 unique cards, host guide included.",
     priceCents: 3900,
-    files: [...GENRES.map(pdf), GUIDE],
+    files: [...GENRES.flatMap(withExtras), GUIDE],
   },
   {
     id: "bundle-holiday-series",
@@ -69,7 +77,7 @@ export const DIGITAL = [
     name: "Karaoke Bingo: The Complete Collection (All 16 Editions)",
     description: "Every genre and holiday edition, 640 unique cards, host guide included. One purchase, a year of game nights.",
     priceCents: 5900,
-    files: [...GENRES.map(pdf), ...HOLIDAYS.map(pdf), GUIDE],
+    files: [...GENRES.flatMap(withExtras), ...HOLIDAYS.flatMap(withExtras), GUIDE],
     featured: true,
   },
 ];
@@ -93,6 +101,7 @@ export const publicDigital = () => ({
 // "karaoke-bingo-rnb.pdf" → "90s & 2000s R&B Edition"
 export const fileLabel = (file) => {
   if (file === GUIDE) return "Host Guide";
+  if (EXTRA_LABELS[file]) return EXTRA_LABELS[file];
   const p = DIGITAL.find((d) => d.kind === "single" && d.files[0] === file);
   return p ? p.name.replace("Karaoke Bingo: ", "") : file;
 };

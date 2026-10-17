@@ -283,7 +283,8 @@ const sendFile = (res, file, downloadName) => {
 };
 
 // Every file in an order, once each, in catalog order
-const orderFiles = (order) => [...new Set(order.items.flatMap((i) => (i.files?.length ? i.files : findDigital(i.productId)?.files || [])))];
+// Files saved with the order, plus anything added to that product since (so past buyers get new host sheets too)
+const orderFiles = (order) => [...new Set(order.items.flatMap((i) => [...(i.files || []), ...(findDigital(i.productId)?.files || [])]))];
 
 const findOrderByToken = async (token) => {
   if (!/^[a-f0-9]{48}$/.test(String(token || ""))) return null;
