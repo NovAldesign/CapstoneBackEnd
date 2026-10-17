@@ -50,6 +50,13 @@ const cleanSource = (v) => String(v || "").replace(/[^a-z0-9_-]/gi, "").slice(0,
 const escapeHtml = (value = "") =>
   String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// Shown above the Pay button in Stripe Checkout
+const NO_REFUND_CARDS = "Karaoke Bingo downloads are non-refundable. Your files are delivered right after checkout. See grownfolkscollective.com/refund-policy";
+const FINAL_SALE_MERCH = "Merch is made to order, so all sales are final.";
+// Buyers must check "I understand Karaoke Bingo downloads are non-refundable" on our site first
+const NEEDS_AGREEMENT = "Please check the box to confirm you understand Karaoke Bingo downloads are non-refundable.";
+const agreedNoRefund = (body) => body?.agreeNoRefund === true;
+
 // Karaoke Bingo cards bought together with merch: this much off the cards only
 export const COMBO_PERCENT = 10;
 const comboPrice = (cents) => Math.round(cents * (1 - COMBO_PERCENT / 100));
@@ -163,12 +170,16 @@ router.post("/checkout/merch", async (req, res, next) => {
     const cards = digitalIds.map(findDigital);
     if (cards.some((p) => !p)) return res.status(400).json({ error: "A Karaoke Bingo item in your bag isn't available anymore. Please refresh and try again." });
     const cardLines = cards.map((p) => ({ ...p, paidCents: comboPrice(p.priceCents) }));
+    if (cardLines.length && !agreedNoRefund(req.body)) return res.status(400).json({ error: NEEDS_AGREEMENT });
 
     const metadata = { shopKind: "merch", source: cleanSource(req.body?.source), shippingCents: String(shipping), lineCount: String(lines.length) };
     lines.forEach((l, i) => {
       metadata[`m_${i}`] = JSON.stringify({ v: l.variantId, i: l.productId, q: l.qty, p: l.cents });
     });
-    if (cardLines.length) metadata.digital = cardLines.map((c) => `${c.id}:${c.paidCents}`).join(",");
+    if (cardLines.length) {
+      metadata.digital = cardLines.map((c) => `${c.id}:${c.paidCents}`).join(",");
+      metadata.noRefundAgreedAt = new Date().toISOString();
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -201,7 +212,7 @@ router.post("/checkout/merch", async (req, res, next) => {
             currency: "usd",
             product_data: {
               name: `${c.name} (${COMBO_PERCENT}% off with merch)`,
-              description: `Printable download, sent by email right after checkout. Regular price ${money(c.priceCents)}.`,
+              description: `Printable download, sent by email right after checkout. Non-refundable. Regular price ${money(c.priceCents)}.`,
             },
             unit_amount: c.paidCents,
           },
@@ -210,6 +221,7 @@ router.post("/checkout/merch", async (req, res, next) => {
       ],
       success_url: `${SITE()}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
       ...recoveryOptions(),
+      custom_text: { submit: { message: cardLines.length ? `${FINAL_SALE_MERCH} ${NO_REFUND_CARDS}` : FINAL_SALE_MERCH } },
       cancel_url: `${SITE()}/shop?cancelled=true#merch`,
       metadata,
     });
@@ -231,6 +243,7 @@ router.post("/checkout/digital", async (req, res, next) => {
     const ids = [...new Set((Array.isArray(req.body?.items) ? req.body.items : []).map(String))].slice(0, 20);
     const products = ids.map(findDigital);
     if (!products.length || products.some((p) => !p)) return res.status(400).json({ error: "Please choose a download." });
+    if (!agreedNoRefund(req.body)) return res.status(400).json({ error: NEEDS_AGREEMENT });
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -246,8 +259,9 @@ router.post("/checkout/digital", async (req, res, next) => {
       })),
       success_url: `${SITE()}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
       ...recoveryOptions(),
+      custom_text: { submit: { message: NO_REFUND_CARDS } },
       cancel_url: `${SITE()}/shop?cancelled=true#bingo`,
-      metadata: { shopKind: "digital", items: products.map((p) => p.id).join(","), source: cleanSource(req.body?.source) },
+      metadata: { shopKind: "digital", items: products.map((p) => p.id).join(","), source: cleanSource(req.body?.source), noRefundAgreedAt: new Date().toISOString() },
     });
     res.status(201).json({ url: session.url });
   } catch (err) {
@@ -436,6 +450,7 @@ const createDigitalOrder = async (session, lines, { totalPaidCents, withTicketCo
       items,
       totalPaidCents,
       source: m.source || "",
+      noRefundAgreedAt: m.noRefundAgreedAt ? new Date(m.noRefundAgreedAt) : null,
     });
   } catch (err) {
     if (err?.code === 11000) return null;
@@ -463,6 +478,7 @@ const createDigitalOrder = async (session, lines, { totalPaidCents, withTicketCo
               <p>Order <strong>${escapeHtml(order.orderNumber)}</strong>${withMerch ? ` (bought with merch order ${escapeHtml(withMerch)}, ${COMBO_PERCENT}% off your cards)` : ""}</p><ul>${list}</ul>
               <p style="margin:24px 0;"><a href="${link}" style="background:#0E2340;color:#fff;padding:14px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">Download your cards</a></p>
               <p>Save this email. Your link works any time you need to print again.</p>
+              <p style="font-size:13px;color:#5F6672;">Karaoke Bingo downloads are non-refundable. If your link gives you any trouble, reply to this email and we'll help you get your files.</p>
               ${ticketCodeHtml(tc)}
               <p style="font-size:13px;color:#5F6672;">${escapeHtml(LICENSE)}</p>
               <p>Questions? Just reply to this email.</p>

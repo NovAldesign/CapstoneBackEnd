@@ -23,6 +23,7 @@ const DigitalOrderSchema = new mongoose.Schema(
     items: [DigitalItemSchema],
     totalPaidCents: { type: Number, default: 0 },
     ticketCode: { type: String, default: "" }, // 5% off tickets, earned with this order
+    noRefundAgreedAt: { type: Date, default: null }, // when the buyer checked "downloads are non-refundable"
     downloads: { type: Number, default: 0 },
     lastDownloadAt: { type: Date, default: null },
     source: { type: String, default: "" },
