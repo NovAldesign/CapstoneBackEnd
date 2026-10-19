@@ -43,11 +43,24 @@ const artistApplicationSchema = new mongoose.Schema(
     signedAt: { type: Date, default: Date.now },
 
     // Review
+    // roster = saved for later: off the lineup, but everything they sent is kept
+    // so you can book them again (Showcases tab > Roster)
     status: {
       type: String,
-      enum: ["pending", "approved", "declined"],
+      enum: ["pending", "approved", "declined", "roster"],
       default: "pending",
     },
+    rosterNote: { type: String, default: "", trim: true }, // e.g. "Out for surgery. Hosting after the new year."
+    rosteredAt: { type: Date, default: null },
+    // Shows they were taken off of (kept so you can see their past with us)
+    history: [
+      {
+        eventId: { type: String, default: "" },
+        eventName: { type: String, default: "" },
+        note: { type: String, default: "" },
+        at: { type: Date, default: Date.now },
+      },
+    ],
      reviewToken: { type: String, required: true },
     reviewedAt: { type: Date, default: null },
 

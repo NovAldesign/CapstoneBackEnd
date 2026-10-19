@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import mongoose from "mongoose";
 import ArtistApplication from "../models/artistApplicationSchema.js";
 import Event from "../models/eventSchema.js";
@@ -145,6 +146,46 @@ router.get("/inbox", async (req, res) => {
 /* =======================================================
    SHOWCASES: lineups, approvals, ticket sales by code, payouts
 ======================================================= */
+// Roster: people saved for later, plus everyone who has performed or hosted before.
+// Nothing here is deleted, so you can book them again.
+const buildRoster = async (apps, person) => {
+  const saved = await ArtistApplication.find({ status: "roster" })
+    .sort({ rosteredAt: -1 })
+    .select("-reviewToken")
+    .lean();
+
+  const approved = apps.filter((a) => a.status === "approved" && isId(a.eventId));
+  const events = await Event.find({ _id: { $in: [...new Set(approved.map((a) => a.eventId))] } })
+    .select("name date status")
+    .lean();
+  const byId = new Map(events.map((e) => [String(e._id), e]));
+  const now = new Date();
+
+  // One row per person (same email + role), newest show first
+  const groups = new Map();
+  for (const a of approved) {
+    const e = byId.get(String(a.eventId));
+    if (!e || e.status === "cancelled") continue;
+    const key = `${String(a.email || "").toLowerCase()}|${a.role || "artist"}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ a, e });
+  }
+  const past = [];
+  for (const rows of groups.values()) {
+    const pastRows = rows.filter(({ e }) => new Date(e.date) < now).sort((x, y) => new Date(y.e.date) - new Date(x.e.date));
+    if (!pastRows.length) continue;
+    const next = rows.filter(({ e }) => new Date(e.date) >= now).sort((x, y) => new Date(x.e.date) - new Date(y.e.date))[0];
+    past.push({
+      ...person(pastRows[0].a),
+      shows: pastRows.map(({ e }) => ({ name: e.name, date: e.date })),
+      bookedNext: next ? { name: next.e.name, date: next.e.date } : null,
+    });
+  }
+  past.sort((x, y) => new Date(y.shows[0].date) - new Date(x.shows[0].date));
+
+  return { saved: saved.map(person), past };
+};
+
 router.get("/showcases", async (req, res) => {
   try {
     const since = new Date(Date.now() - 45 * DAY);
@@ -193,6 +234,10 @@ router.get("/showcases", async (req, res) => {
         payoutAmount: a.payoutAmount,
         bookingEmailSentAt: a.bookingEmailSentAt,
         adminNotes: a.adminNotes,
+        rosterNote: a.rosterNote || "",
+        rosteredAt: a.rosteredAt,
+        history: (a.history || []).map((h) => ({ eventName: h.eventName, note: h.note, at: h.at })),
+        hasLive: Boolean(a.live?.status),
         createdAt: a.createdAt,
       };
     };
@@ -222,6 +267,7 @@ router.get("/showcases", async (req, res) => {
       }),
       // Pending applications that picked "any showcase" or an event not listed above
       unassigned: apps.filter((a) => a.status === "pending" && !eventIds.has(String(a.eventId))).map(person),
+      roster: await buildRoster(apps, person),
     });
   } catch (err) {
     console.error("Admin showcases error:", err.message);
@@ -252,10 +298,62 @@ router.post("/showcases/:id/remove", async (req, res) => {
 
 const findApplication = async (id) => (isId(id) ? ArtistApplication.findById(id) : null);
 
-router.post("/applications/:id/approve", async (req, res) => {
+// Move someone off a show to the Roster (saved for later). Keeps everything they sent.
+router.post("/applications/:id/roster", async (req, res) => {
   try {
     const application = await findApplication(req.params.id);
     if (!application) return res.status(404).json({ error: "Application not found." });
+    if (!["pending", "approved"].includes(application.status)) {
+      return res.status(400).json({ error: "Only booked or new applications can be moved to the roster." });
+    }
+    const event = isId(application.eventId)
+      ? await Event.findById(application.eventId).select("name date").lean()
+      : null;
+    if (application.status === "approved" && event && new Date(event.date) < new Date()) {
+      return res.status(400).json({ error: "That show already happened. They're already on the Roster under Performed before." });
+    }
+    const note = clean(req.body?.note, 300);
+    const oldEventId = String(application.eventId || "");
+
+    if (application.status === "approved" && oldEventId) {
+      application.history.push({ eventId: oldEventId, eventName: application.eventName || event?.name || "", note });
+      // Their ticket code for that show stops working (sales so far stay on record)
+      await PromoCode.updateMany({ artistId: String(application._id), eventIds: oldEventId }, { active: false });
+      application.promoCode = "";
+      application.bookingEmailSentAt = null;
+    }
+    // Their Live was for that show, so take it off the schedule (details are kept)
+    if (req.body?.cancelLive !== false && application.live?.status) application.live.status = "";
+
+    application.status = "roster";
+    application.rosterNote = note;
+    application.rosteredAt = new Date();
+    application.eventId = "";
+    application.eventName = "";
+    await application.save();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Roster move error:", err.message);
+    res.status(500).json({ error: "Couldn't move them to the roster. Please try again." });
+  }
+});
+
+// Book someone who already performed: make a new booking so their past show stays in their history
+const copyForRebooking = async (application) => {
+  const src = application.toObject();
+  for (const k of ["_id", "__v", "createdAt", "updatedAt", "live", "history", "promoCode", "bookingEmailSentAt",
+    "payoutPaidAt", "payoutAmount", "reviewedAt", "rosterNote", "rosteredAt"]) delete src[k];
+  return new ArtistApplication({ ...src, status: "pending", reviewToken: crypto.randomBytes(24).toString("hex") });
+};
+
+router.post("/applications/:id/approve", async (req, res) => {
+  try {
+    let application = await findApplication(req.params.id);
+    if (!application) return res.status(404).json({ error: "Application not found." });
+    if (application.status === "approved" && isId(application.eventId)) {
+      const current = await Event.findById(application.eventId).select("date").lean();
+      if (current && new Date(current.date) < new Date()) application = await copyForRebooking(application);
+    }
     const result = await approveApplication(application, {
       eventId: req.body?.eventId,
       code: req.body?.code,
