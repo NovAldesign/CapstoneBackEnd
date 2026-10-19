@@ -37,6 +37,9 @@ const artistApplicationSchema = new mongoose.Schema(
     agreementVersion: { type: String, default: "" }, // Performer Agreement version they signed
     featureConsent: { type: Boolean, default: false },
     signatureName: { type: String, required: true, trim: true },
+    // They confirmed they're the artist and completed and signed the form themselves
+    selfAttested: { type: Boolean, default: false },
+    signedIp: { type: String, default: "" },
     signedAt: { type: Date, default: Date.now },
 
     // Review

@@ -82,6 +82,17 @@ const clean = (value, max = 200) => String(value || "").trim().slice(0, max);
 
 const isHttpUrl = (value) => /^https?:\/\/\S+$/i.test(String(value || ""));
 
+// The typed signature has to be the applicant's own first and last name
+const normName = (v) => String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]+/g, " ").trim();
+const signatureMatches = (sig, first, last) => {
+  const words = normName(sig).split(" ");
+  return Boolean(normName(first) && normName(last)) &&
+    normName(first).split(" ").every((w) => words.includes(w)) &&
+    normName(last).split(" ").every((w) => words.includes(w));
+};
+// The applicant's IP, recorded with their signature (Railway passes it in x-forwarded-for)
+const clientIp = (req) => String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim().slice(0, 64);
+
 // "@name", "name", or "https://www.instagram.com/name/" → "name"
 export const socialHandle = (value) =>
   String(value || "")
@@ -202,6 +213,12 @@ router.post("/apply", async (req, res) => {
     if (!signatureName) {
       return res.status(400).json({ error: "Please type your full name to sign." });
     }
+    if (!signatureMatches(signatureName, firstName, lastName)) {
+      return res.status(400).json({ error: `Your signature has to match the first and last name on this form (${firstName} ${lastName}). Only the ${role === "visual" ? "live artist" : role} can sign.` });
+    }
+    if (b.selfAttested !== true) {
+      return res.status(400).json({ error: `Please confirm you're the ${role === "visual" ? "live artist" : role} and that you completed and signed this form yourself.` });
+    }
     // A full showcase can't take new applications (they can still pick "Any upcoming showcase")
     if (mongoose.Types.ObjectId.isValid(String(b.eventId || ""))) {
       const spot = (await showcaseAvailability()).find((s) => s._id === String(b.eventId));
@@ -243,6 +260,8 @@ router.post("/apply", async (req, res) => {
       agreementVersion: clean(b.agreementVersion, 40),
       featureConsent: true, // being featured is part of the agreement (Performer Agreement 2026-10-10)
       signatureName,
+      selfAttested: true,
+      signedIp: clientIp(req),
       signedAt: new Date(),
       reviewToken: crypto.randomBytes(24).toString("hex"),
     });
@@ -287,6 +306,7 @@ router.post("/apply", async (req, res) => {
                 ${row("Agreed to terms", "✅ Yes")}
                 ${row("OK to feature on site/socials", application.featureConsent ? "✅ Yes" : "No")}
                 ${row("Signed", escapeHtml(`${application.signatureName}, ${new Date().toLocaleDateString("en-US", { timeZone: "America/New_York" })}`))}
+                ${row("Completed and signed by the applicant", application.selfAttested ? "✅ Yes, they confirmed no one else filled it out or signed for them" : "⚠️ Not confirmed")}
               </table>
               <p style="margin:24px 0 8px;">
                 <a href="${approveUrl}" style="background:#002147;color:#fff;padding:12px 22px;text-decoration:none;font-weight:bold;border-radius:4px;">✅ Approve</a>
@@ -313,6 +333,9 @@ router.post("/apply", async (req, res) => {
                 We'll review it and get back to you within 3–5 business days.</p>
               <h3 style="border-bottom:2px solid #C5A059;padding-bottom:6px;">What you agreed to</h3>
               <ul>${termsFor(application).map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+              <p><strong>Signed:</strong> ${escapeHtml(application.signatureName)}, ${escapeHtml(new Date().toLocaleDateString("en-US", { timeZone: "America/New_York", month: "long", day: "numeric", year: "numeric" }))}.
+                You confirmed you are the ${isHost(application) ? "host" : isVisual(application) ? "live artist" : "artist"} named in this application and that you completed and signed it yourself.
+                If someone else filled this out for you, please reply and let us know.</p>
               ${isHost(application) ? "" : isVisual(application) ? "<p>You keep 100% of your art sales, merch, and tips. 🎨</p>" : "<p>You keep 100% of your merch and tips. 🎤</p>"}
               <p>Questions? Just reply to this email.</p>
               <p>Warmly,<br/>Grown Folks Collective</p>
