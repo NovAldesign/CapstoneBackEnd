@@ -36,6 +36,7 @@ import liveRoutes from "./routes/liveRoutes.js"; // Artists pick their Instagram
 import scoutRoutes from "./routes/scoutRoutes.js"; // Industry scout sign-ups (/scouts)
 import hostingRoutes from "./routes/hostingRoutes.js"; // Play. Sip. Toast. hosting requests (/host page)
 import reviewRoutes from "./routes/reviewRoutes.js"; // Guest reviews for the home page
+import siteStatsRoutes from "./routes/siteStatsRoutes.js"; // Ratings + follower counts shown on the site
 import selectRoutes from "./routes/selectRoutes.js"; // GFC Select applications
 import adminHubRoutes from "./routes/adminHubRoutes.js"; // Admin dashboard: inbox, showcases, codes, lists
 import doorRoutes from "./routes/doorRoutes.js"; // Door check-in link for volunteers
@@ -138,6 +139,7 @@ app.use("/api/lives", liveRoutes);
 app.use("/api/scouts", scoutRoutes);
 app.use("/api/hosting", hostingRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/site-stats", siteStatsRoutes);
 app.use("/api/select", selectRoutes);
 app.use("/api/discount-partners", discountPartnerRoutes);
 app.use("/api/admin-hub", protect, restrictTo("admin"), adminHubRoutes);
