@@ -21,6 +21,8 @@ const reviewSchema = new mongoose.Schema(
       enum: ["pending", "approved", "hidden"],
       default: "pending",
     },
+    // When the guest left the review (editable in the dashboard). Falls back to createdAt.
+    date: { type: Date, default: null },
     featured: { type: Boolean, default: false }, // the big card on the home page
     canShare: { type: Boolean, default: true }, // guest said OK to post it
   },

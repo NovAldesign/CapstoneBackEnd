@@ -26,7 +26,21 @@ const toRating = (value) => Math.min(5, Math.max(1, Math.round(Number(value) || 
 const isId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 // What the public site is allowed to see (no emails)
-const publicFields = "name event rating text source featured createdAt";
+const publicFields = "name event rating text source featured date createdAt";
+
+// Newest first by review date (or when it was added, if no date was set)
+const byDate = (match) => [
+  { $match: match },
+  { $addFields: { sortDate: { $ifNull: ["$date", "$createdAt"] } } },
+];
+
+// "2026-10-18" -> Date at noon Eastern (so it never shows as the day before)
+const toDate = (value) => {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+  const d = m ? new Date(`${m[1]}-${m[2]}-${m[3]}T12:00:00-04:00`) : new Date(value);
+  return Number.isNaN(d.getTime()) || d > new Date(Date.now() + 86400000) ? undefined : d;
+};
 
 /* -------------------------------------------------------
    GET /api/reviews  — Public
@@ -35,11 +49,12 @@ const publicFields = "name event rating text source featured createdAt";
 router.get("/", async (req, res) => {
   try {
     const limit = Math.min(12, Math.max(1, Number(req.query.limit) || 6));
-    const reviews = await Review.find({ status: "approved" })
-      .sort({ featured: -1, createdAt: -1 })
-      .limit(limit)
-      .select(publicFields)
-      .lean();
+    const reviews = await Review.aggregate([
+      ...byDate({ status: "approved" }),
+      { $sort: { featured: -1, sortDate: -1 } },
+      { $limit: limit },
+      { $project: Object.fromEntries(publicFields.split(" ").map((f) => [f, 1])) },
+    ]);
     res.json(reviews);
   } catch (err) {
     console.error("Review list error:", err);
@@ -120,7 +135,7 @@ const admin = [protect, restrictTo("admin")];
 // GET /api/reviews/admin  — every review, newest first
 router.get("/admin", admin, async (req, res) => {
   try {
-    const reviews = await Review.find().sort({ createdAt: -1 }).lean();
+    const reviews = await Review.aggregate([...byDate({}), { $sort: { sortDate: -1 } }]);
     res.json(reviews);
   } catch (err) {
     res.status(500).json({ error: "Could not load reviews." });
@@ -143,6 +158,7 @@ router.post("/admin", admin, async (req, res) => {
       source: SOURCES.includes(req.body.source) ? req.body.source : "other",
       status: STATUSES.includes(req.body.status) ? req.body.status : "approved",
       featured: !!req.body.featured,
+      date: toDate(req.body.date) || null,
     });
     if (review.featured) {
       await Review.updateMany({ _id: { $ne: review._id } }, { featured: false });
@@ -170,6 +186,11 @@ router.patch("/admin/:id", admin, async (req, res) => {
     if (req.body.event !== undefined) updates.event = clean(req.body.event, 80);
     if (req.body.text !== undefined) updates.text = clean(req.body.text, 1500);
     if (req.body.rating !== undefined) updates.rating = toRating(req.body.rating);
+    if (req.body.date !== undefined) {
+      const d = toDate(req.body.date);
+      if (d === undefined) return res.status(400).json({ error: "That date doesn't look right (it can't be in the future)." });
+      updates.date = d;
+    }
     if (req.body.source !== undefined && SOURCES.includes(req.body.source)) {
       updates.source = req.body.source;
     }
