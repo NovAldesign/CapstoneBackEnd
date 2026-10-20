@@ -517,7 +517,7 @@ router.post('/checkout', async (req, res, next) => {
       else if (giftCreditCents <= 0) {
         return res.status(400).json({
           error: card.kind === 'pass'
-            ? 'Your Holiday Pass works for Game Night, Karaoke Bingo and Acoustic & Infused tickets. Add one of those to use it.'
+            ? 'Your Holiday Pass works for Game Night, Karaoke Bingo and Acoustic & Infused™ tickets. Add one of those to use it.'
             : "That gift card doesn't have a balance left."
         });
       }

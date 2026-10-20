@@ -107,7 +107,7 @@ router.post("/checkout", async (req, res, next) => {
       if (!passesOpen(now)) return res.status(400).json({ error: "Holiday Passes aren't on sale yet. Gift cards are available now." });
       unitCents = passPrice(pass, now);
       name = `${pass.name} (Grown Folks™ Collective)`;
-      description = `${pass.uses} tickets to Game Night, Karaoke Bingo or Acoustic & Infused through Mar 31, 2027.`;
+      description = `${pass.uses} tickets to Game Night, Karaoke Bingo or Acoustic & Infused™ through Mar 31, 2027.`;
       meta = { shopKind: "pass", productId: pass.id, productName: pass.name, uses: String(pass.uses) };
     }
 

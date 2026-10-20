@@ -82,7 +82,7 @@ export const defaultQuestions = (application, event) => {
       `For anyone meeting you for the first time, who is ${name}, and how did you get started making people laugh?`,
       "How would you describe your hosting style? What can the room expect from you?",
       "What's the best (or wildest) moment you've had on stage so far?",
-      `Why are you excited to host Acoustic & Infused on ${day}?`,
+      `Why are you excited to host Acoustic & Infused™ on ${day}?`,
       "What do you love about a grown folks night out with no alcohol in the room?",
       "Where can people follow you and catch your next show?",
       `Why should folks grab their tickets${code} before they're gone?`,

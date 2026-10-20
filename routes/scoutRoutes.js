@@ -121,7 +121,7 @@ router.post("/", async (req, res) => {
           subject: picked.length ? "You're on the list 🎶 Your free showcase ticket" : "You're on our scout list 🎶",
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:15px;line-height:1.6;max-width:600px;">
             <p>Hi ${esc(firstName)},</p>
-            <p>Thanks for joining our scout list. Acoustic &amp; Infused puts Atlanta's rising singers, musicians, and live artists on one stage,
+            <p>Thanks for joining our scout list. Acoustic &amp; Infused™ puts Atlanta's rising singers, musicians, and live artists on one stage,
               and we're glad to have you in the room.</p>
             <h3 style="color:#002147;border-bottom:2px solid #C5A059;padding-bottom:4px;">${picked.length ? "You're on the guest list for" : "What's next"}</h3>
             ${list}

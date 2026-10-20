@@ -236,7 +236,7 @@ export const creditSummary = async (memberId, now = new Date()) => {
      including tickets for friends in the same order
    - Food events: 10% off instead (Founding 15%)
    - Event credit works on Game Night, Karaoke Bingo and
-     Acoustic & Infused only (same events as the Holiday Pass)
+     Acoustic & Infused™ only (same events as the Holiday Pass)
    MUST match src/Services/memberPricing.js on the website.
 ------------------------------------------------------- */
 export const MEMBER_TICKET_OFF_CENTS = { Social: 500, Founding: 700 };

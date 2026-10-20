@@ -201,7 +201,7 @@ const codeBlock = (card) => `
     <p style="margin:0 0 6px;font-size:26px;font-weight:bold;letter-spacing:3px;">${escapeHtml(card.code)}</p>
     <p style="margin:0;font-size:14px;color:#DCE3EE;">${
       card.kind === "pass"
-        ? `Good for ${card.initialUses} tickets to Game Night, Karaoke Bingo or Acoustic &amp; Infused${card.expiresAt ? ` through ${escapeHtml(longDate(card.expiresAt))}` : ""}`
+        ? `Good for ${card.initialUses} tickets to Game Night, Karaoke Bingo or Acoustic &amp; Infused™${card.expiresAt ? ` through ${escapeHtml(longDate(card.expiresAt))}` : ""}`
         : `${money(card.initialCents)} toward any GFC event${card.expiresAt ? ` · use by ${escapeHtml(longDate(card.expiresAt))}` : " · never expires"}`
     }</p>
   </div>`;
