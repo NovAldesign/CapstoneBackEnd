@@ -69,7 +69,7 @@ router.post("/", async (req, res) => {
           from: "GFC Donations <noreply@grownfolkscollective.com>",
           to: PARTNERS_EMAIL,
           reply_to: email,
-          subject: `🎁 Donation offer: ${who}`,
+          subject: `Donation offer: ${who}`,
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#002147;font-size:15px;line-height:1.6;max-width:640px;">
             <h2 style="border-bottom:2px solid #C5A059;padding-bottom:8px;">New Donation Offer</h2>
             <p style="white-space:pre-line;background:#FAF7F0;border-left:4px solid #C5A059;padding:12px 14px;margin:0 0 14px;">${esc(items)}</p>
@@ -94,7 +94,7 @@ router.post("/", async (req, res) => {
         .send({
           from: "Grown Folks Collective <partners@grownfolkscollective.com>",
           to: email,
-          subject: "Thank you for your donation offer 🎁",
+          subject: "Thank you for your donation offer",
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:15px;line-height:1.6;max-width:600px;">
             <p>Hi ${esc(contactName.split(" ")[0])},</p>
             <p>Thank you for offering to donate to Grown Folks&trade; Collective. Gifts like yours help us create more joy,

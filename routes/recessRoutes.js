@@ -54,7 +54,7 @@ router.post("/interest", async (req, res) => {
           from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
           to: email,
           reply_to: "community@grownfolkscollective.com",
-          subject: "You're on the Recess Talks list 🖍️",
+          subject: "You're on the Recess Talks list",
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:15px;line-height:1.6;max-width:600px;">
             <p>Hi ${esc(name.split(" ")[0])},</p>
             <p>You're on the list for <strong>Recess Talks</strong>, our new monthly series on play, joy and inner-child healing.
@@ -126,7 +126,7 @@ router.post("/speakers", async (req, res) => {
           from: "Recess Talks <noreply@grownfolkscollective.com>",
           to: TEAM_EMAIL,
           reply_to: email,
-          subject: `🖍️ New Recess Talks speaker: ${firstName} ${lastName} (${speaker.speakerType})`,
+          subject: `New Recess Talks speaker: ${firstName} ${lastName} (${speaker.speakerType})`,
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#002147;font-size:15px;line-height:1.6;max-width:640px;">
             <h2 style="border-bottom:2px solid #C5A059;padding-bottom:8px;">New Speaker Application</h2>
             <h3 style="margin:0 0 4px;">“${esc(talkTitle)}”</h3>
@@ -156,7 +156,7 @@ router.post("/speakers", async (req, res) => {
           from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
           to: email,
           reply_to: "community@grownfolkscollective.com",
-          subject: "Thanks for applying to speak at Recess Talks 🖍️",
+          subject: "Thanks for applying to speak at Recess Talks",
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:15px;line-height:1.6;max-width:600px;">
             <p>Hi ${esc(firstName)},</p>
             <p>Thank you for applying to speak at <strong>Recess Talks</strong>. We received your talk idea,
