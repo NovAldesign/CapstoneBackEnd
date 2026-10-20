@@ -18,7 +18,7 @@ export const DONATION_EVENTS = [
   "Game Night",
   "Karaoke Bingo",
   "Acoustic & Infused (Live Music Showcase)",
-  "Recess Talks",
+  "Recess Talks™",
   "GFC Select",
   "Any event",
 ];

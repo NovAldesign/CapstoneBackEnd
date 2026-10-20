@@ -54,10 +54,10 @@ router.post("/interest", async (req, res) => {
           from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
           to: email,
           reply_to: "community@grownfolkscollective.com",
-          subject: "You're on the Recess Talks list",
+          subject: "You're on the Recess Talks™ list",
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:15px;line-height:1.6;max-width:600px;">
             <p>Hi ${esc(name.split(" ")[0])},</p>
-            <p>You're on the list for <strong>Recess Talks</strong>, our new monthly series on play, joy and inner-child healing.
+            <p>You're on the list for <strong>Recess Talks™</strong>, our new monthly series on play, joy and inner-child healing.
               Authors and experts, coffee and tea, something to color while you listen, and a room full of grown folks who
               came to slow down and be present.</p>
             <p>We're planning our first talk for <strong>January 2027</strong>. You'll be the first to know when the date,
@@ -123,10 +123,10 @@ router.post("/speakers", async (req, res) => {
       const link = (v) => (v ? `<a href="${esc(v)}">${esc(v)}</a>` : "");
       resend.emails
         .send({
-          from: "Recess Talks <noreply@grownfolkscollective.com>",
+          from: "Recess Talks™ <noreply@grownfolkscollective.com>",
           to: TEAM_EMAIL,
           reply_to: email,
-          subject: `New Recess Talks speaker: ${firstName} ${lastName} (${speaker.speakerType})`,
+          subject: `New Recess Talks™ speaker: ${firstName} ${lastName} (${speaker.speakerType})`,
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#002147;font-size:15px;line-height:1.6;max-width:640px;">
             <h2 style="border-bottom:2px solid #C5A059;padding-bottom:8px;">New Speaker Application</h2>
             <h3 style="margin:0 0 4px;">“${esc(talkTitle)}”</h3>
@@ -146,7 +146,7 @@ router.post("/speakers", async (req, res) => {
               ${row("Available", esc(speaker.availability.join(", ")))}
               ${row("Notes", esc(speaker.notes))}
             </table>
-            <p>Review it in the dashboard: Recess Talks tab.</p>
+            <p>Review it in the dashboard: Recess Talks™ tab.</p>
           </div>`,
         })
         .catch((err) => console.error("Recess team email failed:", err.message));
@@ -156,10 +156,10 @@ router.post("/speakers", async (req, res) => {
           from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
           to: email,
           reply_to: "community@grownfolkscollective.com",
-          subject: "Thanks for applying to speak at Recess Talks",
+          subject: "Thanks for applying to speak at Recess Talks™",
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:15px;line-height:1.6;max-width:600px;">
             <p>Hi ${esc(firstName)},</p>
-            <p>Thank you for applying to speak at <strong>Recess Talks</strong>. We received your talk idea,
+            <p>Thank you for applying to speak at <strong>Recess Talks™</strong>. We received your talk idea,
               <strong>“${esc(talkTitle)}”</strong>, and we're excited to read it.</p>
             <p>We're planning our first talks for early 2027. We'll review every application and reach out if your talk
               is a fit for an upcoming month.</p>
@@ -188,7 +188,7 @@ router.get("/admin", admin, async (req, res) => {
     ]);
     res.json({ speakers, interest });
   } catch (err) {
-    res.status(500).json({ error: "Couldn't load Recess Talks." });
+    res.status(500).json({ error: "Couldn't load Recess Talks™." });
   }
 });
 
