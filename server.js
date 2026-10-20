@@ -38,6 +38,7 @@ import hostingRoutes from "./routes/hostingRoutes.js"; // Play. Sip. Toast. host
 import reviewRoutes from "./routes/reviewRoutes.js"; // Guest reviews for the home page
 import siteStatsRoutes from "./routes/siteStatsRoutes.js"; // Ratings + follower counts shown on the site
 import recessRoutes from "./routes/recessRoutes.js"; // Recess Talks: speaker applications + interest list
+import donationRoutes from "./routes/donationRoutes.js"; // In-kind donations (products + equipment)
 import selectRoutes from "./routes/selectRoutes.js"; // GFC Select applications
 import adminHubRoutes from "./routes/adminHubRoutes.js"; // Admin dashboard: inbox, showcases, codes, lists
 import doorRoutes from "./routes/doorRoutes.js"; // Door check-in link for volunteers
@@ -142,6 +143,7 @@ app.use("/api/hosting", hostingRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/site-stats", siteStatsRoutes);
 app.use("/api/recess", recessRoutes);
+app.use("/api/donations", donationRoutes);
 app.use("/api/select", selectRoutes);
 app.use("/api/discount-partners", discountPartnerRoutes);
 app.use("/api/admin-hub", protect, restrictTo("admin"), adminHubRoutes);
