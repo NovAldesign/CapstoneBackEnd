@@ -3,7 +3,7 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import Stripe from "stripe";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import Membership, { INTEREST_OPTIONS } from "../models/membershipSchema.js";
 import DiscountPartner from "../models/discountPartnerSchema.js";
 import MemberCredit from "../models/memberCreditSchema.js";
@@ -20,7 +20,7 @@ import {
 const router = express.Router();
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 const SITE_URL = process.env.FRONTEND_URL || "https://www.grownfolkscollective.com";
 const TEAM_EMAIL = "community@grownfolkscollective.com";
 const LINK_MINUTES = 20;
@@ -115,7 +115,7 @@ router.post("/login-link", linkLimiter, async (req, res) => {
 
     const link = `${SITE_URL}/member/login/${token}`;
     if (resend) {
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: "Grown Folks™ Collective <noreply@grownfolkscollective.com>",
         to: member.email,
         reply_to: TEAM_EMAIL,

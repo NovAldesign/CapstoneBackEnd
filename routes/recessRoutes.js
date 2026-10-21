@@ -1,6 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import {
   RecessSpeaker,
   RecessInterest,
@@ -16,7 +16,7 @@ import { protect, restrictTo } from "../middleware/authMiddleware.js";
 // GET  /admin     — Admin. Speaker applications + interest list.
 // PATCH /admin/speakers/:id — Admin. Status and private notes.
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 const SITE_URL = "https://www.grownfolkscollective.com";

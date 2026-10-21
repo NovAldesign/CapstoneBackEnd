@@ -1,11 +1,11 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import DiscountPartner from "../models/discountPartnerSchema.js";
 import { protect, restrictTo } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 const TEAM_EMAIL = "partners@grownfolkscollective.com";
 
 const clean = (value, max = 200) => String(value || "").trim().slice(0, max);

@@ -1,11 +1,9 @@
 import express from "express";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import HostingInquiry from "../models/hostingInquirySchema.js";
 
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 
@@ -124,7 +122,7 @@ router.post("/", async (req, res) => {
           from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
           to: inquiry.email,
           reply_to: TEAM_EMAIL,
-          subject: `${inquiry.firstName}, let's plan something worth toasting 🥂`,
+          subject: `${inquiry.firstName}, let's plan something worth toasting`,
           html: `
             <div style="font-family:sans-serif;padding:20px;color:#002147;max-width:600px;">
               <h2 style="color:#002147;">Thanks, ${escapeHtml(inquiry.firstName)}!</h2>

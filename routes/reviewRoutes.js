@@ -1,13 +1,11 @@
 import express from "express";
 import mongoose from "mongoose";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import Review from "../models/reviewSchema.js";
 import { protect, restrictTo } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 const SOURCES = ["website", "google", "eventbrite", "meetup", "other"];

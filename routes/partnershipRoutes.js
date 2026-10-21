@@ -1,14 +1,12 @@
 import express from 'express';
-import { Resend } from 'resend'; // 1. Import Resend
+import { mailer } from "../utilities/mailer.js"; // 1. Import Resend
 import Partnership from '../models/partnershipSchema.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // 2. Initialize the Resend client using your existing environment key
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 /* -------------------------------------------------------
    POST /api/partnerships
@@ -61,7 +59,7 @@ router.post('/', async (req, res) => {
         : 'None selected';
 
       // EMAIL A: Send to your dedicated partnerships inbox
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: 'GFC Partnership Portal <noreply@grownfolkscollective.com>',
         to: 'partners@grownfolkscollective.com', // Separated destination address
         subject: `New Strategic Proposal: ${companyName} (${tierRequested})`,
@@ -83,7 +81,7 @@ router.post('/', async (req, res) => {
       });
 
       // EMAIL B: Send corporate confirmation receipt to the partner applicant
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: 'Grown Folks Collective <partners@grownfolkscollective.com>', // Branded sender
         to: email,
         subject: 'Your Partnership Inquiry — Grown Folks Collective',

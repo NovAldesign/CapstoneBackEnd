@@ -1,11 +1,9 @@
 import express from "express";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import GroupBooking from "../models/groupBookingSchema.js";
 
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 
@@ -112,7 +110,7 @@ router.post("/", async (req, res) => {
           from: "GFC <noreply@grownfolkscollective.com>",
           to: booking.email,
           reply_to: TEAM_EMAIL,
-          subject: `${booking.firstName}, we got your group request 🎉`,
+          subject: `${booking.firstName}, we got your group request`,
           html: `
             <div style="font-family:sans-serif;padding:20px;color:#002147;max-width:600px;">
               <h2 style="color:#002147;">Let's celebrate, ${escapeHtml(booking.firstName)}!</h2>

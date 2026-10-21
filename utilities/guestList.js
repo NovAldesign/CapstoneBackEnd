@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { guestsPerTicket } from "./plusOne.js";
+import { guestsPerTicket, lineGuests } from "./plusOne.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import GuestEntry from "../models/guestEntrySchema.js";
 import CheckIn from "../models/checkInSchema.js";
@@ -128,13 +128,16 @@ export const buildGuestList = async (event, { includeEventbrite = true } = {}) =
         email: o.buyerEmail || "",
         phone: o.buyerPhone || "",
         // Plus One tickets admit 2 people
-        tickets: (Number(item.quantity) || 1) * (Number(item.guests) || guestsPerTicket(item.ticketName)),
+        tickets: (Number(item.quantity) || 1) * lineGuests(item),
         ticketName: item.ticketName || "",
         paidCents: (Number(item.pricePaidEachCents) || 0) * (Number(item.quantity) || 1),
         source: "website",
         sourceDetail: o.source || "",
         code: o.promoCode || "",
         confirmation: o.confirmationCode || "",
+        orderId: String(o._id),
+        ticketEmailSentAt: o.ticketEmailSentAt || null,
+        ticketEmailError: o.ticketEmailError || "",
         boughtAt: o.createdAt,
       });
     });

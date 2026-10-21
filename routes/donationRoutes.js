@@ -1,6 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import Donation, { DONATION_KINDS, DONATION_EVENTS, DELIVERY } from "../models/donationSchema.js";
 import { protect, restrictTo } from "../middleware/authMiddleware.js";
 
@@ -9,7 +9,7 @@ import { protect, restrictTo } from "../middleware/authMiddleware.js";
 // GET  /admin       — Admin. Every offer, newest first.
 // PATCH /admin/:id  — Admin. Status (new, accepted, received, declined) and notes.
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const PARTNERS_EMAIL = "partners@grownfolkscollective.com";
 const LOGO = "https://www.grownfolkscollective.com/email/gfc-logo.png";

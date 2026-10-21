@@ -27,7 +27,7 @@ import {
   describeCard,
   money,
 } from "../utilities/giftCards.js";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import fs from "fs";
 import path from "path";
 import DigitalOrder from "../models/digitalOrderSchema.js";
@@ -40,7 +40,7 @@ import { DOWNLOADS_DIR, LICENSE, SAMPLE, findDigital, publicDigital, fileLabel }
 const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 const SITE = () => process.env.FRONTEND_URL || "https://grownfolkscollective.com";
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 
@@ -483,7 +483,7 @@ const createDigitalOrder = async (session, lines, { totalPaidCents, withTicketCo
             from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
             to: order.buyerEmail,
             reply_to: TEAM_EMAIL,
-            subject: `🎤 Your Karaoke Bingo cards are ready (${order.orderNumber})`,
+            subject: `Your Karaoke Bingo cards are ready (${order.orderNumber})`,
             html: `<div style="font-family:Arial,sans-serif;color:#0E2340;max-width:600px;margin:0 auto;padding:24px;background:#FAF7F0;">
               <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">Let's get the room singing, ${escapeHtml(first)}!</h2>
               <p>Order <strong>${escapeHtml(order.orderNumber)}</strong>${withMerch ? ` (bought with merch order ${escapeHtml(withMerch)}, ${COMBO_PERCENT}% off your cards)` : ""}</p><ul>${list}</ul>
@@ -554,7 +554,7 @@ router.post("/printful/webhook/:key", wrap(async (req, res) => {
   if (type === "order_canceled" || type === "order_failed") {
     order.printfulError = type === "order_failed" ? (data.reason || "Printful couldn't fulfill this order") : "Canceled in Printful";
     if (resend) {
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: "GFC Shop <noreply@grownfolkscollective.com>",
         to: TEAM_EMAIL,
         subject: `⚠️ Printful ${type === "order_failed" ? "failed" : "canceled"}: ${order.orderNumber}`,
@@ -577,11 +577,11 @@ router.post("/printful/webhook/:key", wrap(async (req, res) => {
       const track = order.tracking.url
         ? `<p style="margin:24px 0;"><a href="${escapeHtml(order.tracking.url)}" style="background:#0E2340;color:#fff;padding:14px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">Track your package</a></p>`
         : "";
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
         to: order.buyerEmail,
         reply_to: TEAM_EMAIL,
-        subject: `📦 Your Grown Folks™ order shipped (${order.orderNumber})`,
+        subject: `Your Grown Folks™ order shipped (${order.orderNumber})`,
         html: `<div style="font-family:Arial,sans-serif;color:#0E2340;max-width:600px;margin:0 auto;padding:24px;background:#FAF7F0;">
           <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">It's on the way, ${escapeHtml(first)}!</h2>
           <p>Order <strong>${escapeHtml(order.orderNumber)}</strong> shipped${order.tracking.carrier ? ` with ${escapeHtml(order.tracking.carrier)}` : ""}.</p>
@@ -697,7 +697,7 @@ export const handleShopSession = async (session) => {
               from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
               to: order.buyerEmail,
               reply_to: TEAM_EMAIL,
-              subject: `🛍️ Your Grown Folks™ order (${order.orderNumber})`,
+              subject: `Your Grown Folks™ order (${order.orderNumber})`,
               html: `<div style="font-family:Arial,sans-serif;color:#0E2340;max-width:600px;margin:0 auto;padding:24px;background:#FAF7F0;">
                 <h2 style="font-family:Georgia,serif;border-bottom:3px solid #C5A059;padding-bottom:10px;">Thanks for your order, ${escapeHtml(first)}!</h2>
                 <p>Order <strong>${escapeHtml(order.orderNumber)}</strong></p><ul>${list}</ul>

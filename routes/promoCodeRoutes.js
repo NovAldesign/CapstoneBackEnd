@@ -11,6 +11,7 @@ import {
   promoNeedsEmail,
 } from "../utilities/promoCodes.js";
 import { findUsableCard, looksLikeCard, cardCoversEvent, describeCard } from "../utilities/giftCards.js";
+import { lineGuests } from "../utilities/plusOne.js";
 
 const router = express.Router();
 
@@ -123,7 +124,7 @@ router.get("/report", async (req, res) => {
     const sections = [...byCode.entries()]
       .map(([code, info]) => {
         const tickets = info.orders.reduce(
-          (sum, o) => sum + (o.items || []).reduce((s, i) => s + (i.quantity || 0) * (i.guests || 1), 0),
+          (sum, o) => sum + (o.items || []).reduce((s, i) => s + (i.quantity || 0) * lineGuests(i), 0),
           0
         );
         const revenue = info.orders.reduce((sum, o) => sum + (o.totalPaidCents || 0), 0);

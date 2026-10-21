@@ -45,6 +45,12 @@ const TicketOrderSchema = new mongoose.Schema(
       enum: ["paid", "refunded", "cancelled"],
       default: "paid",
     },
+    // Buyer's ticket email: when it last went out, and the last error if it didn't
+    ticketEmailSentAt: { type: Date, default: null },
+    ticketEmailId: { type: String, default: "" },
+    ticketEmailError: { type: String, default: "" },
+    ticketEmailCount: { type: Number, default: 0 },
+
     checkedIn: { type: Boolean, default: false },
     checkedInAt: { type: Date, default: null },
   },

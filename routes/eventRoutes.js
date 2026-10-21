@@ -5,7 +5,7 @@ import Stripe from 'stripe';
 import Event from '../models/eventSchema.js';
 import Order from '../models/orderSchema.js';
 import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders.js';
-import { isPlusOne, guestsPerTicket, plusOneMemberCents, plusOneAllowed } from '../utilities/plusOne.js';
+import { isPlusOne, guestsPerTicket, plusOneMemberCents, plusOneAllowed, groupSize } from '../utilities/plusOne.js';
 import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail } from '../utilities/promoCodes.js';
 import crypto from 'crypto';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
@@ -402,7 +402,9 @@ router.post('/checkout', async (req, res, next) => {
       const codeApplies = promo ? promoAppliesToEvent(promo, event) : false;
       // Member price first, then codes and the bundle discount.
       // Plus One for members: whichever is cheaper, the Plus One price or 2 tickets at member price.
-      const startPriceInCents = !memberPricing
+      // Group tickets ("Group of 5") are already deeply discounted: no member pricing.
+      const groupTicket = !plusOne && groupSize(ticket.name) > 0;
+      const startPriceInCents = !memberPricing || groupTicket
         ? fullPriceInCents
         : plusOne
           ? plusOneMemberCents(member.tier, fullPriceInCents, event.name)
@@ -424,7 +426,7 @@ router.post('/checkout', async (req, res, next) => {
 
     // Plus One orders take no other discounts. Artist and tracking codes still count toward
     // the performer's sales (no discount); discount codes have to come out of the bag.
-    const hasPlusOne = verifiedItems.some((i) => i.guests > 1);
+    const hasPlusOne = verifiedItems.some((i) => isPlusOne(i.ticketTypeName));
     if (hasPlusOne && promo && promo.type !== 'tracking' && promo.source !== 'artist') {
       return res.status(400).json({ error: `The Plus One deal can't be combined with other discounts. Remove ${promo.code.toUpperCase()} from your bag to keep your Plus One price.` });
     }
@@ -472,9 +474,11 @@ router.post('/checkout', async (req, res, next) => {
         currency: 'usd',
         product_data: {
           name: `${item.eventName} — ${item.ticketTypeName}`,
-          description: item.guests > 1
+          description: isPlusOne(item.ticketTypeName)
             ? `Plus One deal: admits ${item.guests} guests. Other discounts don't combine with this deal.`
-            : discountMultiplier < 1.0
+            : item.guests > 1
+              ? `Group ticket: admits ${item.guests} guests.`
+              : discountMultiplier < 1.0
               ? `Ending social isolation.${discountLabel}`
               : 'Standard Community Event Admission Pass',
         },

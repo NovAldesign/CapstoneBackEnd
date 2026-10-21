@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Resend } from "resend";
+import { mailer } from "./mailer.js";
 
 // -------------------------------------------------------
 // TikTok Lives with booked artists, hosts and live artists (older records may say Instagram).
@@ -7,7 +7,7 @@ import { Resend } from "resend";
 // the artist picks a date + platform at /live-setup/:id?t=TOKEN and gets a confirmation
 // email with the questions attached. Everything shows in the dashboard on the day.
 // -------------------------------------------------------
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 export const SITE_URL = "https://www.grownfolkscollective.com";
 export const TEAM_EMAIL = "events@grownfolkscollective.com";
@@ -155,12 +155,12 @@ export const sendLiveConfirmation = async (application, event, { updated = false
     ? `<li style="margin:0 0 10px;">${escapeHtml(live.extraQuestion)} <span style="color:#6b6b6b;font-size:14px;">(your idea)</span></li>`
     : "";
 
-  await resend.emails.send({
+  await resend.emails.sendOrThrow({
     from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
     to: application.email,
     bcc: TEAM_EMAIL,
     reply_to: TEAM_EMAIL,
-    subject: `${updated ? "Updated: " : ""}You're set for our ${platform} Live 🔴 ${fmtShortDay(live.date)}`,
+    subject: `${updated ? "Updated: " : ""}You're set for our ${platform} Live, ${fmtShortDay(live.date)}`,
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
         <p>Hi ${first},</p>
@@ -201,7 +201,7 @@ export const sendLiveConfirmation = async (application, event, { updated = false
 export const sendNeedsDateNotice = async (application) => {
   if (!resend) return false;
   const live = application.live;
-  await resend.emails.send({
+  await resend.emails.sendOrThrow({
     from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
     to: TEAM_EMAIL,
     reply_to: application.email,

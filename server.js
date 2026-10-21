@@ -9,11 +9,12 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import Stripe from "stripe";
 import mongoose from "mongoose";
-import { Resend } from "resend"; 
+import { mailer } from "./utilities/mailer.js"; 
 
 // 2. Middleware & DB Imports
 import { logReq, globalErr } from "./middleware/middleware.js";
 import { protect, restrictTo } from "./middleware/authMiddleware.js";
+import { repairGroupOrderGuests } from "./utilities/ticketOrders.js";
 import connectDB from "./db/conn.js";
 import Membership from "./models/membershipSchema.js"; 
 
@@ -97,7 +98,7 @@ console.log("🛠️  BOOTING UP LEAN GROWN FOLKS COLLECTIVE SERVER...");
 
 // Stripe & Resend Initializations
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 // -------------------------------------------------------
 // 5. 🔥 FIX: ISOLATED RAW WEBHOOK ROUTE MOUNTING (Stripe & Eventbrite)
@@ -206,6 +207,9 @@ const startServer = async () => {
     try {
       await connectDB();
       console.log("✅ MongoDB Connection Established");
+
+      // Group tickets ("Group of 5") saved before the fix counted as 1 person. Fix them once.
+      repairGroupOrderGuests().catch((e) => console.error("Group order repair:", e.message));
 
       // Email gifts that were scheduled for a later date (checks every 10 minutes)
       const runGifts = () => deliverScheduledGifts().catch((e) => console.error("Scheduled gifts:", e.message));

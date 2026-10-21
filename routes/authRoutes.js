@@ -2,7 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { Resend } from 'resend';
+import { mailer } from "../utilities/mailer.js";
 import { loginLimiter } from '../utilities/security.js';
 import Admin from '../models/adminSchema.js';
 import Membership from '../models/membershipSchema.js';
@@ -10,7 +10,7 @@ import Partnership from '../models/partnershipSchema.js';
 
 const router = express.Router();
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 const SITE_URL = process.env.FRONTEND_URL || 'https://www.grownfolkscollective.com';
 const RESET_MINUTES = 30;
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -105,7 +105,7 @@ router.post('/forgot-password', resetLimiter, async (req, res) => {
 
     const link = `${SITE_URL}/reset-password/${token}`;
     if (resend) {
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: 'Grown Folks Collective <events@grownfolkscollective.com>',
         to: admin.email,
         subject: 'Reset your Grown Folks Collective admin password',

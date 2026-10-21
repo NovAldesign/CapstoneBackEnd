@@ -17,7 +17,28 @@ export const PLUS_ONE_SAVE_CENTS = 800;
 export const PLUS_ONE_GUESTS = 2;
 
 export const isPlusOne = (ticketName = "") => /plus\s*-?\s*one/i.test(String(ticketName));
-export const guestsPerTicket = (ticketName = "") => (isPlusOne(ticketName) ? PLUS_ONE_GUESTS : 1);
+
+// Group tickets admit more than one person: "Group of 5", "Table of 4", "Party of 6", "4-Pack".
+// Group tickets follow the normal discount rules; only the head count changes.
+const GROUP_PATTERNS = [
+  /\b(?:group|table|party|crew|squad)\s+(?:of|for)\s+(\d{1,2})\b/i,
+  /\b(\d{1,2})\s*-?\s*(?:pack|person|people|guests)\b/i,
+];
+export const groupSize = (ticketName = "") => {
+  for (const re of GROUP_PATTERNS) {
+    const m = String(ticketName).match(re);
+    if (m && Number(m[1]) >= 2 && Number(m[1]) <= 50) return Number(m[1]);
+  }
+  return 0;
+};
+
+// People admitted by one ticket of this type
+export const guestsPerTicket = (ticketName = "") =>
+  isPlusOne(ticketName) ? PLUS_ONE_GUESTS : groupSize(ticketName) || 1;
+
+// People admitted by one ticket on a saved order line (fixes older group orders saved as 1)
+export const lineGuests = (item = {}) =>
+  Math.max(Number(item.guests) || 1, guestsPerTicket(item.ticketName || item.ticketTypeName || ""));
 
 // A regular ticket's price, worked out from the Plus One price
 export const regularPriceFromPlusOne = (plusOneCents) =>

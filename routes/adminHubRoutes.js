@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import ArtistApplication from "../models/artistApplicationSchema.js";
 import Event from "../models/eventSchema.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
+import { guestsPerTicket } from "../utilities/plusOne.js";
+import { sendOrderEmails } from "../utilities/ticketOrders.js";
 import PromoCode from "../models/promoCodeSchema.js";
 import DiscountPartner from "../models/discountPartnerSchema.js";
 import Partnership from "../models/partnershipSchema.js";
@@ -36,9 +38,10 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const isId = (id) => mongoose.Types.ObjectId.isValid(String(id || ""));
 const clean = (v, max = 200) => String(v ?? "").trim().slice(0, max);
-const soldFor = (event) => (event.ticketTypes || []).reduce((n, t) => n + (Number(t.sold) || 0), 0);
+// Counted in people: a "Group of 5" ticket is 5, a Plus One is 2
+const soldFor = (event) => (event.ticketTypes || []).reduce((n, t) => n + (Number(t.sold) || 0) * guestsPerTicket(t.name), 0);
 const capacityFor = (event) =>
-  Number(event.capacity) || (event.ticketTypes || []).reduce((n, t) => n + (Number(t.quantity) || 0), 0);
+  Number(event.capacity) || (event.ticketTypes || []).reduce((n, t) => n + (Number(t.quantity) || 0) * guestsPerTicket(t.name), 0);
 const fullName = (doc) => [doc.firstName, doc.lastName].filter(Boolean).join(" ");
 
 // Tickets sold per { code, eventId } from paid website orders
@@ -743,6 +746,23 @@ router.get("/events/:id/guests", async (req, res) => {
   } catch (err) {
     console.error("Admin guest list error:", err.message);
     res.status(500).json({ error: "Couldn't load the guest list." });
+  }
+});
+
+// Send a website order's ticket email again (optionally to a different address)
+router.post("/orders/:id/resend-ticket", async (req, res) => {
+  try {
+    if (!isId(req.params.id)) return res.status(404).json({ error: "Order not found." });
+    const order = await TicketOrder.findById(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found." });
+    const to = clean(req.body?.to, 120).toLowerCase();
+    if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: "That email address doesn't look right." });
+    await sendOrderEmails(order, { to });
+    if (order.ticketEmailError) return res.status(502).json({ error: `The ticket email didn't send: ${order.ticketEmailError}` });
+    res.json({ ok: true, sentTo: to || order.buyerEmail, sentAt: order.ticketEmailSentAt });
+  } catch (err) {
+    console.error("Resend ticket error:", err.message);
+    res.status(500).json({ error: "Couldn't resend the ticket email." });
   }
 });
 

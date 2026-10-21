@@ -1,15 +1,14 @@
-import { Resend } from "resend";
+import { mailer } from "./mailer.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import Event from "../models/eventSchema.js";
+import { lineGuests, guestsPerTicket } from "./plusOne.js";
 
 // -------------------------------------------------------
 // Website ticket orders: saves the order and sends
 // (1) the buyer's ticket email and (2) the sale alert to the team.
 // -------------------------------------------------------
 
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 const SITE_URL = "https://www.grownfolkscollective.com";
@@ -144,19 +143,34 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
       ticketTypeId: String(item.ticketTypeId || ""),
       ticketName: item.ticketName || "",
       quantity: Number(item.qty) || 1,
-      guests: Number(item.guests) || 1, // Plus One = 2 people per ticket
+      guests: lineGuests(item), // people per ticket (Plus One = 2, Group of 5 = 5)
       pricePaidEachCents: Number(item.pricePaid) || 0,
     };
   });
   await order.save();
+  return sendOrderEmails(order, { team: true });
+};
+
+/* -------------------------------------------------------
+   Build and send the emails for a saved order.
+   team: true also sends the sale alert (new orders only).
+   to: send the buyer's ticket to a different address (resends).
+------------------------------------------------------- */
+export const sendOrderEmails = async (order, { team = false, to = "" } = {}) => {
+  const eventIds = [...new Set((order.items || []).map((i) => String(i.eventId)))];
+  const events = await Event.find({ _id: { $in: eventIds } }).select("-promoCodes");
+  const findEvent = (id) => events.find((e) => String(e._id) === String(id));
 
   if (!resend) {
     console.warn("RESEND_API_KEY is not set — skipping ticket emails.");
+    order.ticketEmailError = "Email service isn't set up (RESEND_API_KEY missing).";
+    await order.save();
     return order;
   }
 
   const firstName = (order.buyerName || "").split(" ")[0] || "friend";
   const totalTickets = order.items.reduce((sum, i) => sum + i.quantity, 0);
+  const totalPeople = order.items.reduce((sum, i) => sum + i.quantity * lineGuests(i), 0);
 
   // ── Buyer ticket email: one block per event ──
   const eventBlocks = eventIds
@@ -168,7 +182,9 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
         .map(
           (i) =>
             `<li style="margin:0 0 4px;">${escapeHtml(i.ticketName)} × ${i.quantity}` +
-            (i.guests > 1 ? ` <strong>(admits ${i.guests} each)</strong>` : "") +
+            (lineGuests(i) > 1
+              ? ` <strong>(admits ${i.quantity === 1 ? `${lineGuests(i)} people` : `${lineGuests(i)} each, ${i.quantity * lineGuests(i)} people total`})</strong>`
+              : "") +
             ` <span style="color:#666;">(${money(i.pricePaidEachCents)} each)</span></li>`
         )
         .join("");
@@ -205,7 +221,7 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
         <div style="padding:26px 24px;">
           <p style="font-size:16px;color:#002147;margin:0 0 14px;">Hi ${escapeHtml(firstName)},</p>
           <p style="font-size:15px;line-height:1.6;color:#444;margin:0 0 20px;">
-            Thanks for grabbing your ${totalTickets === 1 ? "ticket" : "tickets"}! We can't wait to see you.
+            Thanks for grabbing your ${totalTickets === 1 ? "ticket" : "tickets"}${totalPeople > totalTickets ? ` for ${totalPeople} people` : ""}! We can't wait to see you.
             Keep this email. It's your ticket.
           </p>
 
@@ -244,7 +260,7 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
           <td style="padding:8px;border-bottom:1px solid #eee;">${escapeHtml(i.eventName)}<br/>
             <span style="color:#666;font-size:13px;">${escapeHtml(formatDateTime(i.eventDate))}</span></td>
           <td style="padding:8px;border-bottom:1px solid #eee;">${escapeHtml(i.ticketName)}</td>
-          <td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${i.quantity}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${i.quantity}${lineGuests(i) > 1 ? `<br/><span style="color:#666;font-size:12px;">${i.quantity * lineGuests(i)} people</span>` : ""}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;">${money(i.pricePaidEachCents)} each</td>
           <td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${left}</td>
         </tr>`;
@@ -257,7 +273,7 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
 
   const eventNames = [...new Set(order.items.map((i) => i.eventName))].join(" + ");
 
-  const teamHtml = `
+  const teamHtml = () => `
     <div style="font-family:Arial,Helvetica,sans-serif;padding:20px;color:#002147;">
       <h2 style="border-bottom:2px solid #C5A059;padding-bottom:10px;">🎟️ New Website Ticket Sale</h2>
       <table style="border-collapse:collapse;font-size:15px;margin:0 0 18px;">
@@ -278,36 +294,76 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
       <p style="margin:18px 0 6px;"><a href="${stripeLink}" style="color:#9A7630;font-weight:bold;">View payment in Stripe →</a></p>
       <p style="margin:0;color:#666;font-size:13px;">
         Heads up: website sales don't show in Eventbrite. If Eventbrite is close to selling out,
-        lower its ticket quantity by ${totalTickets} so you don't oversell.
+        lower its ticket quantity by ${totalTickets} so you don't oversell.${totalPeople > totalTickets ? ` This order is ${totalPeople} people at the door.` : ""}${order.ticketEmailError ? `<br/><strong style=\"color:#9B2335;\">The buyer's ticket email did not send: ${escapeHtml(order.ticketEmailError)}. Use Resend ticket in the dashboard guest list.</strong>` : ""}
       </p>
     </div>`;
 
-  const sends = [];
-  if (order.buyerEmail) {
-    sends.push(
-      resend.emails
-        .send({
-          from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
-          to: order.buyerEmail,
-          reply_to: TEAM_EMAIL,
-          subject: `🎟️ Your tickets: ${eventNames} (${order.confirmationCode})`,
-          html: buyerHtml,
-        })
-        .catch((err) => console.error("Buyer ticket email failed:", err.message))
-    );
+  // ── Buyer ticket email (result saved on the order so the dashboard can show it) ──
+  const buyerTo = String(to || order.buyerEmail || "").trim();
+  if (buyerTo) {
+    try {
+      // The shared sender spaces sends out and retries; check error for the final result.
+      const message = {
+        from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
+        to: buyerTo,
+        reply_to: TEAM_EMAIL,
+        subject: `Your tickets: ${eventNames} (${order.confirmationCode})`,
+        html: buyerHtml,
+      };
+      const { data, error } = await resend.emails.send(message);
+      if (error) throw new Error(error.message || "Email service rejected the message.");
+      order.ticketEmailSentAt = new Date();
+      order.ticketEmailId = data?.id || "";
+      order.ticketEmailError = "";
+      order.ticketEmailCount = (order.ticketEmailCount || 0) + 1;
+    } catch (err) {
+      console.error("Buyer ticket email failed:", order.confirmationCode, err.message);
+      order.ticketEmailError = String(err.message || "Send failed").slice(0, 300);
+    }
+  } else {
+    order.ticketEmailError = "No buyer email on this order.";
   }
-  sends.push(
-    resend.emails
+  await order.save().catch((e) => console.error("Saving ticket email status failed:", e.message));
+
+  // ── Team sale alert (new orders only) ──
+  if (team) {
+    const { error } = await resend.emails
       .send({
         from: "GFC Ticket Sales <noreply@grownfolkscollective.com>",
         to: TEAM_EMAIL,
         ...(order.buyerEmail && { reply_to: order.buyerEmail }),
-        subject: `🎟️ Ticket sale: ${order.buyerName || "New buyer"}, ${eventNames} (${totalTickets})`,
-        html: teamHtml,
+        subject: `🎟️ Ticket sale: ${order.buyerName || "New buyer"}, ${eventNames} (${totalPeople} ${totalPeople === 1 ? "guest" : "guests"})`,
+        html: teamHtml(),
       })
-      .catch((err) => console.error("Team sale email failed:", err.message))
-  );
-  await Promise.all(sends);
+      .catch((err) => ({ error: err }));
+    if (error) console.error("Team sale email failed:", error.message);
+  }
 
   return order;
+};
+
+/* -------------------------------------------------------
+   One-time repair, safe to run on every start: older group orders
+   ("Group of 5") were saved as 1 person per ticket. Fix their head count.
+------------------------------------------------------- */
+export const repairGroupOrderGuests = async () => {
+  const orders = await TicketOrder.find({ "items.ticketName": /group|table|party|crew|squad|pack|people|person|guests/i });
+  let fixed = 0;
+  for (const order of orders) {
+    let changed = false;
+    order.items.forEach((item) => {
+      const n = guestsPerTicket(item.ticketName);
+      if (n > (Number(item.guests) || 1)) {
+        item.guests = n;
+        changed = true;
+      }
+    });
+    if (changed) {
+      order.markModified("items");
+      await order.save();
+      fixed += 1;
+    }
+  }
+  if (fixed) console.log(`Fixed the head count on ${fixed} group ticket order(s).`);
+  return fixed;
 };

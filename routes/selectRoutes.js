@@ -1,7 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import SelectApplication from "../models/selectApplicationSchema.js";
 import SelectRound from "../models/selectRoundSchema.js";
 import SelectNotify from "../models/selectNotifySchema.js";
@@ -13,7 +13,7 @@ import {
 } from "../utilities/selectEmails.js";
 
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 
@@ -661,7 +661,7 @@ const sendDashboardEmails = async ({ people, versions, test, Model }) => {
     const sentTo = [];
     for (const [label, ver] of [["Everyone", versions.base], ["Men", versions.man], ["Women", versions.woman]]) {
       if (!ver) continue;
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: "GFC Select™ <events@grownfolkscollective.com>",
         to: TEAM_EMAIL,
         subject: `[TEST · ${label}] ${fillName(ver.subject, sample.firstName)}`,

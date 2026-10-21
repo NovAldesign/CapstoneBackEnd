@@ -1,6 +1,6 @@
 import express from 'express';
 import Stripe from 'stripe';
-import { Resend } from 'resend';
+import { mailer } from "../utilities/mailer.js";
 import dotenv from 'dotenv';
 import Membership from '../models/membershipSchema.js';
 import { grantMonthlyCreditFromInvoice } from '../utilities/memberCredit.js';
@@ -11,7 +11,7 @@ dotenv.config();
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = 'community@grownfolkscollective.com';
 

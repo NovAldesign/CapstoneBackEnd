@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Resend } from "resend";
+import { mailer } from "./mailer.js";
 import GiftCard from "../models/giftCardSchema.js";
 import { PASS_RULES, BONUS_EXPIRES, passCoversEvent } from "./shopCatalog.js";
 
@@ -8,7 +8,7 @@ import { PASS_RULES, BONUS_EXPIRES, passCoversEvent } from "./shopCatalog.js";
 // codes, what they cover at checkout, redeeming, and emails.
 // -------------------------------------------------------
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 const SITE_URL = "https://www.grownfolkscollective.com";
 const TIME_ZONE = "America/New_York";
@@ -271,7 +271,7 @@ const sendGiftReceipt = async (card) => {
     from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
     to: card.purchaserEmail,
     reply_to: TEAM_EMAIL,
-    subject: `🎁 Your gift for ${card.recipientName || card.recipientEmail} is set`,
+    subject: `Your gift for ${card.recipientName || card.recipientEmail} is set`,
     html,
   });
 };

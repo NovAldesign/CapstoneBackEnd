@@ -1,12 +1,10 @@
 import express from 'express';
-import { Resend } from 'resend';
+import { mailer } from "../utilities/mailer.js";
 import Contact from '../models/contactSchema.js'; // This cleanly imports our fixed model default export now!
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 /* -------------------------------------------------------
    POST /api/contact  — Public
@@ -57,7 +55,7 @@ router.post('/', async (req, res) => {
       ` : '';
 
       // 1. Notify you (admin fallback included for environmental variable stability)
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: 'GFC Contact Form <noreply@grownfolkscollective.com>',
         to:   process.env.ADMIN_EMAIL || 'hello@grownfolkscollective.com',
         subject: `New GFC Message — ${reason}`,
@@ -77,7 +75,7 @@ router.post('/', async (req, res) => {
       });
 
       // 2. Confirm to the user
-      await resend.emails.send({
+      await resend.emails.sendOrThrow({
         from: 'Grown Folks Collective <hello@grownfolkscollective.com>',
         to:   email,
         subject: 'We received your message — GFC',

@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Resend } from "resend";
+import { mailer } from "./mailer.js";
 import Partnership from "../models/partnershipSchema.js";
 import DiscountPartner from "../models/discountPartnerSchema.js";
 import Event from "../models/eventSchema.js";
@@ -10,7 +10,7 @@ import Event from "../models/eventSchema.js";
 // sign-in links, and partner emails.
 // -------------------------------------------------------
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 export const SITE_URL = (process.env.FRONTEND_URL || "https://www.grownfolkscollective.com").replace(/\/$/, "");
 export const PARTNER_EMAIL = "partners@grownfolkscollective.com";
 export const PARTNER_PHONE = "470-256-7729";
@@ -172,7 +172,7 @@ const send = async ({ to, subject, html }) => {
     console.error(`Partner email not sent (RESEND_API_KEY missing): ${subject}`);
     return false;
   }
-  await resend.emails.send({
+  await resend.emails.sendOrThrow({
     from: "Grown Folks™ Collective <partners@grownfolkscollective.com>",
     to,
     reply_to: PARTNER_EMAIL,

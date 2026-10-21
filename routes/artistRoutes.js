@@ -2,7 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import mongoose from "mongoose";
 import multer from "multer";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import ArtistApplication from "../models/artistApplicationSchema.js";
 import Event from "../models/eventSchema.js";
 import PromoCode from "../models/promoCodeSchema.js";
@@ -15,9 +15,7 @@ import {
 } from "../utilities/promoCodes.js";
 
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
@@ -325,7 +323,7 @@ router.post("/apply", async (req, res) => {
           from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
           to: application.email,
           reply_to: TEAM_EMAIL,
-          subject: `${application.artistName}, we got your application ${isVisual(application) ? "🎨" : "🎶"}`,
+          subject: `${application.artistName}, we got your application`,
           html: `
             <div style="font-family:Arial,Helvetica,sans-serif;padding:20px;color:#002147;max-width:600px;font-size:15px;line-height:1.6;">
               <h2>Thanks for applying, ${escapeHtml(application.firstName)}!</h2>
@@ -473,12 +471,12 @@ const sendBookingEmail = async (application, event, code) => {
   const h3 = (t) =>
     `<h3 style="color:#002147;border-bottom:2px solid #C5A059;padding-bottom:4px;margin:26px 0 8px;">${t}</h3>`;
 
-  await resend.emails.send({
+  await resend.emails.sendOrThrow({
     from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
     to: application.email,
     bcc: TEAM_EMAIL,
     reply_to: TEAM_EMAIL,
-    subject: `${isHost(application) ? "You're hosting! 🎙️" : isVisual(application) ? "You're booked! 🎨" : "You're booked! 🎤"} ${event.name} (${fmtShort(event.date)})`,
+    subject: `${isHost(application) ? "You're hosting!" : isVisual(application) ? "You're booked!" : "You're booked!"} ${event.name} (${fmtShort(event.date)})`,
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
         <p>Hi ${escapeHtml(application.firstName)},</p>

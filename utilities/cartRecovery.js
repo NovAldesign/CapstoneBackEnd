@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { Resend } from "resend";
+import { mailer } from "./mailer.js";
 import CartReminder from "../models/cartReminderSchema.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import MerchOrder from "../models/merchOrderSchema.js";
@@ -16,7 +16,7 @@ export const RECOVERY_WINDOW_MIN = 60;
 const QUIET_DAYS = 3; // at most one reminder per email in this many days
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 
 const escapeHtml = (value = "") =>
@@ -48,11 +48,11 @@ const boughtSince = async (email, since) => {
 };
 
 const COPY = {
-  tickets: { subject: "Your seats are still waiting 🎟️", head: "Still coming out?", line: "You were this close to grabbing your tickets. Rooms fill up, so lock your spot in while it's open." },
-  merch: { subject: "You left something in your bag 🛍️", head: "Still want these?", line: "Your Grown Folks™ merch is still in your bag. Every piece is made to order just for you." },
-  digital: { subject: "Your Karaoke Bingo cards are waiting 🎤", head: "Ready for game night?", line: "Your printable Karaoke Bingo cards are one click away. Download right after checkout." },
-  gift: { subject: "Your gift is almost on its way 🎁", head: "Finish your gift?", line: "Your Grown Folks™ gift is still in checkout. It only takes a minute to send." },
-  pass: { subject: "Your Holiday Pass is still waiting 🎁", head: "Finish your Holiday Pass?", line: "Your Holiday Pass is still in checkout." },
+  tickets: { subject: "Your seats are still waiting", head: "Still coming out?", line: "You were this close to grabbing your tickets. Rooms fill up, so lock your spot in while it's open." },
+  merch: { subject: "You left something in your bag", head: "Still want these?", line: "Your Grown Folks™ merch is still in your bag. Every piece is made to order just for you." },
+  digital: { subject: "Your Karaoke Bingo cards are waiting", head: "Ready for game night?", line: "Your printable Karaoke Bingo cards are one click away. Download right after checkout." },
+  gift: { subject: "Your gift is almost on its way", head: "Finish your gift?", line: "Your Grown Folks™ gift is still in checkout. It only takes a minute to send." },
+  pass: { subject: "Your Holiday Pass is still waiting", head: "Finish your Holiday Pass?", line: "Your Holiday Pass is still in checkout." },
 };
 
 export const handleExpiredSession = async (session) => {
@@ -100,7 +100,7 @@ export const handleExpiredSession = async (session) => {
   const c = COPY[kind] || COPY.merch;
   const first = String(session.customer_details?.name || "").split(" ")[0] || "friend";
   const list = items.map((i) => `<li>${escapeHtml(i)}</li>`).join("");
-  await resend.emails.send({
+  await resend.emails.sendOrThrow({
     from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
     to: email,
     reply_to: TEAM_EMAIL,

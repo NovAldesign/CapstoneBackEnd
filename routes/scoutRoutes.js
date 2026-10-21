@@ -1,5 +1,5 @@
 import express from "express";
-import { Resend } from "resend";
+import { mailer } from "../utilities/mailer.js";
 import Scout, { SCOUT_TITLES, SCOUT_INTERESTS } from "../models/scoutSchema.js";
 import Event from "../models/eventSchema.js";
 import GuestEntry from "../models/guestEntrySchema.js";
@@ -8,7 +8,7 @@ import GuestEntry from "../models/guestEntrySchema.js";
 // POST /  — Public sign-up from /scouts. Saves the scout, puts them on the
 // guest list (free) for each showcase they pick, and emails them + the team.
 const router = express.Router();
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = mailer; // shared sender: spaced out, retried, failures logged
 
 const TEAM_EMAIL = "events@grownfolkscollective.com";
 const SITE_URL = "https://www.grownfolkscollective.com";
@@ -118,7 +118,7 @@ router.post("/", async (req, res) => {
           from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
           to: email,
           reply_to: TEAM_EMAIL,
-          subject: picked.length ? "You're on the list 🎶 Your free showcase ticket" : "You're on our scout list 🎶",
+          subject: picked.length ? "You're on the list: your free showcase ticket" : "You're on our scout list",
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:15px;line-height:1.6;max-width:600px;">
             <p>Hi ${esc(firstName)},</p>
             <p>Thanks for joining our scout list. Acoustic &amp; Infused™ puts Atlanta's rising singers, musicians, and live artists on one stage,
