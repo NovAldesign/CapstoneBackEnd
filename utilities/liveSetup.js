@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { Resend } from "resend";
 
 // -------------------------------------------------------
-// Instagram/TikTok Lives with booked artists, hosts and live artists.
+// TikTok Lives with booked artists, hosts and live artists (older records may say Instagram).
 // Dashboard (Lives tab) sets the date choices and questions and copies a private link;
 // the artist picks a date + platform at /live-setup/:id?t=TOKEN and gets a confirmation
 // email with the questions attached. Everything shows in the dashboard on the day.
@@ -114,7 +114,7 @@ const calendarLink = (application, date) => {
   const start = new Date(date);
   const end = new Date(start.getTime() + LIVE_MINUTES * 60000);
   const stamp = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-  const platform = PLATFORMS[application.live.platform] || "Instagram";
+  const platform = PLATFORMS[application.live.platform] || "TikTok";
   const params = new URLSearchParams({
     action: "TEMPLATE",
     text: `Grown Folks Collective ${platform} Live`,
@@ -142,7 +142,7 @@ export const sendLiveConfirmation = async (application, event, { updated = false
   if (!resend) return false;
   const live = application.live;
   const first = escapeHtml(firstWord(application.artistName || application.firstName));
-  const platform = PLATFORMS[live.platform] || "Instagram";
+  const platform = PLATFORMS[live.platform] || "TikTok";
   const h3 = (t) =>
     `<h3 style="color:#002147;border-bottom:2px solid #C5A059;padding-bottom:4px;margin:26px 0 8px;">${t}</h3>`;
   const questions = (live.questions || [])

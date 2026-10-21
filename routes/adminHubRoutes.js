@@ -1055,7 +1055,7 @@ router.post("/crm/brevo", async (req, res) => {
 });
 
 /* =======================================================
-   LIVES: Instagram/TikTok Lives with booked artists and hosts
+   LIVES: TikTok Lives with booked artists and hosts
    Set date choices + questions → copy their private link → they pick a date
    and platform and get a confirmation. On the day, the questions are here.
 ======================================================= */
@@ -1164,10 +1164,9 @@ router.post("/lives/:id", async (req, res) => {
     if (b.date) {
       const date = parseEtLocal(b.date);
       if (!date) return res.status(400).json({ error: "That date doesn't look right." });
-      if (b.platform && !PLATFORMS[b.platform]) return res.status(400).json({ error: "Pick Instagram or TikTok." });
-      if (b.platform) live.platform = b.platform;
+      // All Lives are on TikTok now
+      live.platform = "tiktok";
       if (typeof b.handle === "string") live.handle = socialHandle(b.handle);
-      if (!live.platform) return res.status(400).json({ error: "Pick Instagram or TikTok for this Live." });
       const changed = !live.date || new Date(live.date).getTime() !== date.getTime();
       live.date = date;
       live.status = "confirmed";
