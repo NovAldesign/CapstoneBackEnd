@@ -456,6 +456,9 @@ const showcaseOptions = async (application) => {
   );
 };
 
+// Invite link to the GFC Artists Discord server (set ARTIST_DISCORD_URL to change it)
+const ARTIST_DISCORD = process.env.ARTIST_DISCORD_URL || "https://discord.gg/eznG72nWzk";
+
 // Their "You're booked!" email
 const sendBookingEmail = async (application, event, code) => {
   if (!resend) return false;
@@ -525,6 +528,13 @@ const sendBookingEmail = async (application, event, code) => {
           ${featured ? `<li>Your ${application.headshotUrl ? "photo and bio are" : "bio is"} now featured in <strong>Meet the Artists</strong> on the <a href="${eventPageLink(event._id)}" style="color:#9A7630;">event page</a>.</li>` : ""}
           <li>We'll promote you on our socials and email list. When you post about the show, please tag <strong>@grownfolkscollective</strong>.</li>
         </ul>
+
+        ${h3("Join the GFC Artists Discord")}
+        <p style="margin:0 0 10px;">Discord is how we keep all of our artists in the loop: show updates, Live scheduling, your graphics, and new opportunities as they come up. It's also where you can share your work and connect with the other artists. Please download the Discord app and join before your show:</p>
+        <p style="margin:0 0 10px;">
+          <a href="${ARTIST_DISCORD}" style="display:inline-block;background:#002147;color:#ffffff;padding:12px 22px;text-decoration:none;font-weight:bold;border-radius:4px;">Join GFC Artists on Discord</a>
+        </p>
+        <p style="margin:0;font-size:14px;color:#444;">${ARTIST_DISCORD}<br/>Once you're in, set your server name to your stage name and turn on notifications.</p>
 
         ${h3("Reminders")}
         <ul>
