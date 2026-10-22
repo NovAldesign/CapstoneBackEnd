@@ -51,6 +51,16 @@ const TicketOrderSchema = new mongoose.Schema(
     ticketEmailError: { type: String, default: "" },
     ticketEmailCount: { type: Number, default: 0 },
 
+    // Code changed by an admin after purchase (buyer forgot to enter an artist's code)
+    codeHistory: [
+      {
+        from: { type: String, default: "" },
+        to: { type: String, default: "" },
+        at: { type: Date, default: Date.now },
+        by: { type: String, default: "admin" },
+      },
+    ],
+
     checkedIn: { type: Boolean, default: false },
     checkedInAt: { type: Date, default: null },
   },

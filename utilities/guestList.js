@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { guestsPerTicket, lineGuests } from "./plusOne.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import GuestEntry from "../models/guestEntrySchema.js";
+import CodeCredit from "../models/codeCreditSchema.js";
 import CheckIn from "../models/checkInSchema.js";
 import Event from "../models/eventSchema.js";
 
@@ -176,6 +177,14 @@ export const buildGuestList = async (event, { includeEventbrite = true } = {}) =
       boughtAt: g.createdAt,
       manual: true,
     });
+  });
+
+  // Codes credited by hand to Eventbrite / added guests
+  const credits = await CodeCredit.find({ eventId: { $in: ids } }).lean();
+  const creditByKey = new Map(credits.map((c) => [c.key, c]));
+  guests.forEach((g) => {
+    const cr = creditByKey.get(g.key);
+    if (cr) { g.code = cr.code; g.codeCredited = true; }
   });
 
   guests.forEach((g) => {

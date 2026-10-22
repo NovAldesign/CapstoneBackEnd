@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import ArtistApplication from "../models/artistApplicationSchema.js";
 import Event from "../models/eventSchema.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
+import CodeCredit from "../models/codeCreditSchema.js";
 import { guestsPerTicket } from "../utilities/plusOne.js";
 import { sendOrderEmails } from "../utilities/ticketOrders.js";
 import PromoCode from "../models/promoCodeSchema.js";
@@ -18,7 +19,7 @@ import Subscriber from "../models/subscriberSchema.js";
 import Scout from "../models/scoutSchema.js";
 import Membership from "../models/membershipSchema.js";
 import CrmProfile from "../models/crmProfileSchema.js";
-import { PROMO_CODES, normalizeCode, describePromo, isLive } from "../utilities/promoCodes.js";
+import { PROMO_CODES, normalizeCode, describePromo, isLive, codeExists } from "../utilities/promoCodes.js";
 import { approveApplication, declineApplication } from "./artistRoutes.js";
 import GuestEntry, { GUEST_SOURCES } from "../models/guestEntrySchema.js";
 import { buildGuestList, setCheckIn, doorKey, clearEventbriteCache } from "../utilities/guestList.js";
@@ -55,6 +56,12 @@ const codeSalesByEvent = async (codes = null) => {
   ]);
   const map = new Map();
   rows.forEach((r) => map.set(`${r._id.code}|${r._id.eventId}`, r.tickets));
+  // Plus tickets credited by hand (Eventbrite, Posh, door) from the guest list
+  const credits = await CodeCredit.find(codes ? { code: { $in: codes } } : {}).lean();
+  credits.forEach((c) => {
+    const k = `${c.code}|${c.eventId}`;
+    map.set(k, (map.get(k) || 0) + c.tickets);
+  });
   return map;
 };
 
@@ -433,6 +440,12 @@ const codeUsage = async () => {
   ]);
   const map = new Map();
   rows.forEach((r) => map.set(r._id, r));
+  // Tickets credited by hand from the guest list
+  const credits = await CodeCredit.aggregate([{ $group: { _id: "$code", tickets: { $sum: "$tickets" }, orders: { $sum: 1 }, lastUsed: { $max: "$createdAt" } } }]);
+  credits.forEach((c) => {
+    const r = map.get(c._id) || { _id: c._id, orders: 0, tickets: 0, lastUsed: null };
+    map.set(c._id, { ...r, orders: r.orders + c.orders, tickets: r.tickets + c.tickets, lastUsed: r.lastUsed && r.lastUsed > c.lastUsed ? r.lastUsed : c.lastUsed });
+  });
   return map;
 };
 
@@ -746,6 +759,49 @@ router.get("/events/:id/guests", async (req, res) => {
   } catch (err) {
     console.error("Admin guest list error:", err.message);
     res.status(500).json({ error: "Couldn't load the guest list." });
+  }
+});
+
+// Credit a guest-list row to a performer's code (buyer forgot to enter it).
+// Website orders: the order's code is changed. Eventbrite / added-by-hand guests: a credit is saved.
+// Send code "" to remove the credit.
+router.post("/events/:id/credit-code", async (req, res) => {
+  try {
+    const event = await findEvent(req.params.id);
+    if (!event) return res.status(404).json({ error: "Event not found." });
+    const key = clean(req.body?.key, 120);
+    const raw = clean(req.body?.code, 40);
+    const code = normalizeCode(raw);
+    if (code && !(await codeExists(code))) return res.status(400).json({ error: `There's no code called ${raw.toUpperCase()}. Check the spelling in Codes.` });
+
+    if (key.startsWith("web:")) {
+      const orderId = key.split(":")[1];
+      if (!isId(orderId)) return res.status(400).json({ error: "Unknown order." });
+      const order = await TicketOrder.findById(orderId);
+      if (!order) return res.status(404).json({ error: "Order not found." });
+      if ((order.promoCode || "") !== code) {
+        order.codeHistory.push({ from: order.promoCode || "", to: code, at: new Date(), by: "admin" });
+        order.promoCode = code;
+        await order.save();
+      }
+      return res.json({ ok: true, key, code, kind: "order" });
+    }
+
+    if (!/^(eb|guest):/.test(key)) return res.status(400).json({ error: "Unknown guest." });
+    if (!code) {
+      await CodeCredit.deleteOne({ key });
+      return res.json({ ok: true, key, code: "", kind: "credit" });
+    }
+    const tickets = Math.min(50, Math.max(1, Math.floor(Number(req.body?.tickets) || 1)));
+    await CodeCredit.findOneAndUpdate(
+      { key },
+      { eventId: String(event._id), key, code, tickets, guestName: clean(req.body?.name, 120), addedBy: "admin" },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ ok: true, key, code, kind: "credit" });
+  } catch (err) {
+    console.error("Credit code error:", err.message);
+    res.status(500).json({ error: "Couldn't update the code." });
   }
 });
 
