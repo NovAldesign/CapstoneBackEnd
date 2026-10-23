@@ -14,7 +14,7 @@ const promoCodeSchema = new mongoose.Schema(
     active: { type: Boolean, default: true },
     expires: { type: String, default: null }, // "YYYY-MM-DD" (last day it works)
     expiresAt: { type: Date, default: null }, // exact moment it stops working (e.g. 48-hour thank-you codes)
-    source: { type: String, enum: ["artist", "manual", "thankyou", "winback", "referral", "reward"], default: "manual" }, // thankyou = day-after email, winback = "we miss you", referral = a guest's share code, reward = free ticket earned by referrals
+    source: { type: String, enum: ["artist", "manual", "thankyou", "winback", "referral", "reward", "addon"], default: "manual" }, // addon = 15-minute "add another event" code from the thank-you page. // thankyou = day-after email, winback = "we miss you", referral = a guest's share code, reward = free ticket earned by referrals
     artistId: { type: String, default: "" },
 
     // Rules (same meaning as in utilities/promoCodes.js)

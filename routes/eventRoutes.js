@@ -5,11 +5,12 @@ import Stripe from 'stripe';
 import Event from '../models/eventSchema.js';
 import Order from '../models/orderSchema.js';
 import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders.js';
+import { getAddonOffer } from '../utilities/addonOffer.js';
 import { isPlusOne, guestsPerTicket, plusOneMemberCents, plusOneAllowed, groupSize } from '../utilities/plusOne.js';
 import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail, usedCodeBefore } from '../utilities/promoCodes.js';
 import crypto from 'crypto';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
-import { findUsableCard, cardCredit, redeemCard, looksLikeCard } from '../utilities/giftCards.js';
+import { findUsableCard, cardCredit, redeemCard, looksLikeCard, createCardsFromSession, deliverNewCards } from '../utilities/giftCards.js';
 import { handleShopSession } from './shopRoutes.js';
 import { markSponsorPaid } from './partnerPortalRoutes.js';
 import { recoveryOptions, handleExpiredSession, markRecovered } from '../utilities/cartRecovery.js';
@@ -282,6 +283,27 @@ const spendMemberCredit = async (meta, sessionId, confirmationCode) => {
   return taken;
 };
 
+// Gift delivery date "YYYY-MM-DD" -> 9 AM Eastern that day ('' = send right away). Same as the gift page.
+const giftSendAt = (ymd) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))) return '';
+  const d = new Date(`${ymd}T09:00:00-05:00`);
+  if (Number.isNaN(d.getTime()) || d <= new Date() || d > new Date(Date.now() + 366 * 86400000)) return '';
+  return d.toISOString();
+};
+
+/* -------------------------------------------------------
+   POST /api/events/addon-offer  { sessionId }
+   Thank-you page: a 15-minute code to add another event and keep the multi-event discount
+------------------------------------------------------- */
+router.post('/addon-offer', async (req, res) => {
+  try {
+    return res.json(await getAddonOffer(req.body?.sessionId));
+  } catch (err) {
+    console.error('Add-on offer error:', err.message);
+    return res.json({ ok: false, reason: 'error' });
+  }
+});
+
 /* -------------------------------------------------------
    POST /api/events/checkout
    Public — Multi-ticket/Multi-event bundle checkout
@@ -296,7 +318,27 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(500).json({ error: 'Stripe is not configured on the server.' });
     }
 
-        const { cartItems, customerEmail, agreedToTerms, termsVersion, source, useMemberCredit } = req.body;
+        const { cartItems, customerEmail, agreedToTerms, termsVersion, source, useMemberCredit, giftAdd } = req.body;
+    // Optional: a gift card for a friend, bought in the same order ("Gift a ticket")
+    let gift = null;
+    if (giftAdd && Number(giftAdd.amountCents) > 0) {
+      const amountCents = Math.round(Number(giftAdd.amountCents));
+      const toEmail = String(giftAdd.recipientEmail || '').trim().toLowerCase();
+      if (amountCents < 1000 || amountCents > 20000) {
+        return res.status(400).json({ error: 'A gift for a friend can be $10 to $200.' });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+        return res.status(400).json({ error: "Enter your friend's email so we can send their gift." });
+      }
+      gift = {
+        amountCents,
+        recipientName: String(giftAdd.recipientName || '').trim().slice(0, 60),
+        recipientEmail: toEmail,
+        fromName: String(giftAdd.fromName || '').trim().slice(0, 60),
+        message: String(giftAdd.message || '').trim().slice(0, 300),
+        sendAt: giftSendAt(giftAdd.sendAt),
+      };
+    }
     // Logged-in member (optional): member pricing + event credit
     const member = await memberFromRequest(req);
     const memberPricing = getsMemberPricing(member);
@@ -564,6 +606,29 @@ router.post('/checkout', async (req, res, next) => {
         pricePaid:    Math.round(item.priceInCents * discountMultiplier)
       });
     });
+
+    // Gift for a friend: its own line, never discounted by codes or the bundle
+    if (gift) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `GFC Gift Card for ${gift.recipientName || 'a friend'}`,
+            description: 'Good toward any Grown Folks™ event. Emailed to your friend on the day you choose.',
+          },
+          unit_amount: gift.amountCents,
+        },
+        quantity: 1,
+      });
+      Object.assign(metadata, {
+        giftAddCents: String(gift.amountCents),
+        giftTo: gift.recipientName,
+        giftToEmail: gift.recipientEmail,
+        giftFrom: gift.fromName,
+        giftMsg: gift.message,
+        giftSendAt: gift.sendAt,
+      });
+    }
 
     // A fully free order (e.g. GFC100 on one ticket) skips Stripe: save it and send the ticket email now
     const orderTotalCents = lineItems.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0) - giftCreditCents - memberCreditCents;
@@ -941,6 +1006,30 @@ router.post('/webhook/stripe', async (req, res, next) => {
           await completeTicketOrder(order, purchasedCart);
         } catch (emailErr) {
           console.error('Ticket order emails failed:', emailErr.message);
+        }
+
+        // A gift card for a friend bought in the same order
+        if (Number(meta.giftAddCents) > 0) {
+          try {
+            const cards = await createCardsFromSession({
+              ...session,
+              amount_total: Number(meta.giftAddCents),
+              metadata: {
+                shopKind: 'gift',
+                amountCents: meta.giftAddCents,
+                isGift: 'yes',
+                recipientName: meta.giftTo || '',
+                recipientEmail: meta.giftToEmail || '',
+                fromName: meta.giftFrom || '',
+                message: meta.giftMsg || '',
+                sendAt: meta.giftSendAt || '',
+                source: meta.source || '',
+              },
+            });
+            await deliverNewCards(cards || []);
+          } catch (giftErr) {
+            console.error('Gift card with ticket order failed:', giftErr.message);
+          }
         }
       }
     } catch (processErr) {

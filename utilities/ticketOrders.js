@@ -99,7 +99,7 @@ export const claimTicketOrder = async (session) => {
       buyerName: details.name || "",
       buyerEmail: details.email || session.customer_email || "",
       buyerPhone: details.phone || "",
-      totalPaidCents: session.amount_total || 0,
+      totalPaidCents: Math.max(0, (session.amount_total || 0) - (Number(session.metadata?.giftAddCents) || 0)), // a gift card bought alongside isn't ticket money
       discountLabel: [
         Number(session.metadata?.memberSavingsCents) > 0
           ? `${session.metadata.memberTier === "Founding" ? "Founding" : "Member"} pricing ($${(Number(session.metadata.memberSavingsCents) / 100).toFixed(2)})`
