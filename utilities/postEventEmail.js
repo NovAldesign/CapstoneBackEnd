@@ -6,6 +6,7 @@ import TicketOrder from "../models/ticketOrderSchema.js";
 import PromoCode from "../models/promoCodeSchema.js";
 import { isPlusOne, plusOneAllowed } from "./plusOne.js";
 import { nextMorning } from "./memberOffer.js";
+import { getShareCode, shareLink, FRIENDS_PER_REWARD } from "./referrals.js";
 
 // -------------------------------------------------------
 // Day-after "thank you for coming" email, for every event
@@ -85,7 +86,7 @@ const findNextEvent = async (now) => {
   return { event, plusOne };
 };
 
-export const buildPostEventEmail = ({ name, pastEvent, nextEvent, plusOne, code, expiresAt }) => {
+export const buildPostEventEmail = ({ name, pastEvent, nextEvent, plusOne, code, expiresAt, shareCode }) => {
   const past = escapeHtml(pastEvent?.name || "our event");
   const nextName = nextEvent ? escapeHtml(nextEvent.name) : "";
   const button = (href, label) =>
@@ -104,10 +105,16 @@ export const buildPostEventEmail = ({ name, pastEvent, nextEvent, plusOne, code,
   const aloneBlock = `<h3 style="color:#002147;border-bottom:2px solid #C5A059;padding-bottom:4px;margin:26px 0 8px;">Coming alone?</h3>
        <p>Save <strong>$5</strong> on your ticket with your own code:</p>
        <p style="margin:14px 0;"><span style="display:inline-block;border:2px dashed #C5A059;padding:10px 22px;font-size:22px;font-weight:bold;letter-spacing:3px;color:#002147;">${code}</span></p>
-       <p style="font-size:14px;color:#555;margin-top:0;">Good for one ticket. Use it by <strong>${escapeHtml(deadline(expiresAt))}</strong> (48 hours). Can't be combined with the Plus One or the multi-event discount.</p>
+       <p style="font-size:14px;color:#555;margin-top:0;">Good for one ticket to any event that doesn't include food. Use it by <strong>${escapeHtml(deadline(expiresAt))}</strong> (48 hours). Can't be combined with the Plus One or the multi-event discount.</p>
        <p>${button(nextEvent ? eventUrl(nextEvent, code) : `${SITE_URL}/events?code=${code}`, "Use my $5 off")}</p>`;
 
-  const newFriend = `<p style="background:#FAF7F0;border-left:3px solid #C5A059;padding:12px 16px;margin:24px 0;"><strong>First time for your friend?</strong> They can join our newsletter at <a href="${SITE_URL}" style="color:#9A7630;font-weight:bold;">grownfolkscollective.com</a> for $5 off their own first ticket.</p>`;
+  const newFriend = shareCode
+    ? `<div style="background:#FAF7F0;border-left:3px solid #C5A059;padding:14px 16px;margin:24px 0;">
+         <p style="margin:0 0 8px;"><strong>Bring your folks, earn free tickets</strong></p>
+         <p style="margin:0 0 8px;">Your own code is <strong style="letter-spacing:2px;">${shareCode}</strong>. Friends who use it get $5 off their first ticket, and every ${FRIENDS_PER_REWARD} friends who come out earns <strong>you a free ticket</strong>.</p>
+         <p style="margin:0;font-size:14px;">Share this link: <a href="${shareLink(shareCode)}" style="color:#9A7630;font-weight:bold;">${shareLink(shareCode)}</a></p>
+       </div>`
+    : `<p style="background:#FAF7F0;border-left:3px solid #C5A059;padding:12px 16px;margin:24px 0;"><strong>First time for your friend?</strong> They can join our newsletter at <a href="${SITE_URL}" style="color:#9A7630;font-weight:bold;">grownfolkscollective.com</a> for $5 off their own first ticket.</p>`;
 
   const html = `
   <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
@@ -139,10 +146,12 @@ export const buildPostEventEmail = ({ name, pastEvent, nextEvent, plusOne, code,
     "",
     "COMING ALONE?",
     `Save $5 on your ticket with your own code: ${code}`,
-    `Good for one ticket. Use it by ${deadline(expiresAt)} (48 hours). Can't be combined with the Plus One or the multi-event discount.`,
+    `Good for one ticket to any event that doesn't include food. Use it by ${deadline(expiresAt)} (48 hours). Can't be combined with the Plus One or the multi-event discount.`,
     nextEvent ? eventUrl(nextEvent, code) : `${SITE_URL}/events?code=${code}`,
     "",
-    `First time for your friend? They can join our newsletter at ${SITE_URL} for $5 off their own first ticket.`,
+    shareCode
+      ? `BRING YOUR FOLKS, EARN FREE TICKETS\nYour own code is ${shareCode}. Friends who use it get $5 off their first ticket, and every ${FRIENDS_PER_REWARD} friends who come out earns you a free ticket.\nShare this link: ${shareLink(shareCode)}`
+      : `First time for your friend? They can join our newsletter at ${SITE_URL} for $5 off their own first ticket.`,
     "",
     "See you soon,",
     "Vaughn",
@@ -203,6 +212,7 @@ export const sendPostEventEmails = async (now = new Date()) => {
                 oncePerOrder: true,
                 maxUses: 1,
                 noBundle: true,
+                noFood: true,
                 source: "thankyou",
                 notes: `Day-after email to ${email}`,
               });
@@ -216,7 +226,8 @@ export const sendPostEventEmails = async (now = new Date()) => {
         } else {
           await PromoCode.updateOne({ code }, { expiresAt }); // a retry restarts the 48 hours
         }
-        const message = buildPostEventEmail({ name, pastEvent, nextEvent: next.event, plusOne: next.plusOne, code, expiresAt });
+        const shareCode = await getShareCode(email, name);
+        const message = buildPostEventEmail({ name, pastEvent, nextEvent: next.event, plusOne: next.plusOne, code, expiresAt, shareCode });
         const { error } = await mailer.emails.send({
           from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
           to: email,

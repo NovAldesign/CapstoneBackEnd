@@ -14,7 +14,7 @@ const promoCodeSchema = new mongoose.Schema(
     active: { type: Boolean, default: true },
     expires: { type: String, default: null }, // "YYYY-MM-DD" (last day it works)
     expiresAt: { type: Date, default: null }, // exact moment it stops working (e.g. 48-hour thank-you codes)
-    source: { type: String, enum: ["artist", "manual", "thankyou", "winback"], default: "manual" }, // one-off codes: thankyou = day-after email, winback = "we miss you" email
+    source: { type: String, enum: ["artist", "manual", "thankyou", "winback", "referral", "reward"], default: "manual" }, // thankyou = day-after email, winback = "we miss you", referral = a guest's share code, reward = free ticket earned by referrals
     artistId: { type: String, default: "" },
 
     // Rules (same meaning as in utilities/promoCodes.js)
@@ -28,6 +28,7 @@ const promoCodeSchema = new mongoose.Schema(
     returningOnly: { type: Boolean, default: false }, // only for emails that HAVE bought before
     oncePerEmail: { type: Boolean, default: false }, // one paid order per email
     notes: { type: String, default: "", trim: true },
+    referrerEmail: { type: String, default: "", lowercase: true, trim: true }, // referral codes: whose code it is
   },
   { timestamps: true }
 );
