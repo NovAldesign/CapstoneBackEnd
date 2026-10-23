@@ -1,4 +1,5 @@
 import { mailer } from "./mailer.js";
+import { isOptedOut, asMarketing } from "./optOut.js";
 import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import Event from "../models/eventSchema.js";
 import Subscriber from "../models/subscriberSchema.js";
@@ -126,13 +127,14 @@ export const buildWelcomeEmail = ({ name, returning = false, events }) => {
 export const sendWelcomeEmail = async (subscriber) => {
   try {
     if (!mailer || !subscriber?.email || subscriber.welcomeSentAt) return false;
+    if (await isOptedOut(subscriber.email)) return false;
     const [boughtBefore, events] = await Promise.all([hasBoughtBefore(subscriber.email), nextEvents()]);
     const email = buildWelcomeEmail({ name: subscriber.fullName, returning: boughtBefore, events });
     const { error } = await mailer.emails.send({
       from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
       to: subscriber.email,
       reply_to: TEAM_EMAIL,
-      ...email,
+      ...asMarketing(email, subscriber.email, "welcome"),
     });
     if (error) return false;
     await Subscriber.updateOne(

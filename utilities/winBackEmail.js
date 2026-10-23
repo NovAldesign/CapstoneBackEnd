@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { isOptedOut, asMarketing } from "./optOut.js";
 import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import mongoose from "mongoose";
 import { mailer } from "./mailer.js";
@@ -164,6 +165,7 @@ export const sendWinBackEmails = async (now = new Date()) => {
     if (sent >= PER_RUN) break;
     const email = g._id;
     if (members.has(email)) continue;
+    if (await isOptedOut(email)) continue;
     try {
       const recent = await WinBack.exists({
         email,
@@ -210,7 +212,7 @@ export const sendWinBackEmails = async (now = new Date()) => {
         from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
         to: email,
         reply_to: "community@grownfolkscollective.com",
-        ...message,
+        ...asMarketing(message, email, "we-miss-you"),
       });
       if (error) {
         row.error = error.message || "send failed";

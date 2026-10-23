@@ -1,4 +1,5 @@
 import { mailer } from "./mailer.js";
+import { isOptedOut, asMarketing } from "./optOut.js";
 import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import MemberOffer from "../models/memberOfferSchema.js";
 import Membership from "../models/membershipSchema.js";
@@ -165,6 +166,10 @@ export const sendDueMemberOffers = async (now = new Date()) => {
         await MemberOffer.updateOne({ _id: offer._id }, { status: "skipped", skipReason: "already a member" });
         continue;
       }
+      if (await isOptedOut(offer.email)) {
+        await MemberOffer.updateOne({ _id: offer._id }, { status: "skipped", skipReason: "unsubscribed" });
+        continue;
+      }
       const history = await guestHistory(offer.email);
       const expiresAt = new Date(now.getTime() + JOIN_DAYS * DAY);
       const email = buildMemberOfferEmail({ ...offer.toObject(), ...history, expiresAt });
@@ -172,7 +177,7 @@ export const sendDueMemberOffers = async (now = new Date()) => {
         from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
         to: offer.email,
         reply_to: "community@grownfolkscollective.com",
-        ...email,
+        ...asMarketing(email, offer.email, "member-offer"),
       });
       if (error) continue; // stays due; tried again next run
       await MemberOffer.updateOne(

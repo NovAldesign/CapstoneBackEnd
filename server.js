@@ -30,6 +30,7 @@ import contactRoutes from "./routes/contactRoutes.js";
 import travelRoutes from "./routes/travelRoutes.js";
 import articleRoutes from "./routes/articleRoutes.js"; // Added Article/Blog Routes
 import subscriberRoutes from "./routes/subscriberRoutes.js"; //Added Subscriber Routes
+import unsubscribeRoutes from "./routes/unsubscribeRoutes.js";
 import groupBookingRoutes from "./routes/groupBookingRoutes.js"; // Group & birthday bookings
 import promoCodeRoutes from "./routes/promoCodeRoutes.js"; // Ticket codes (artists, referrals, discounts)
 import artistRoutes from "./routes/artistRoutes.js"; // Artist applications + Meet the Artists
@@ -140,6 +141,7 @@ app.use("/api/travel",       travelRoutes);
 app.use("/api/articles",     articleRoutes);    // Mounted Blog/Article API routes
 app.use("/api/admin", protect, restrictTo("admin"), adminRoutes);
 app.use("/api/subscribers", subscriberRoutes);
+app.use("/api/unsubscribe", unsubscribeRoutes); // marketing email opt-outs
 app.use("/api/group-bookings", groupBookingRoutes);
 app.use("/api/promo-codes", promoCodeRoutes);
 app.use("/api/artists", artistRoutes);

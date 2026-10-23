@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { isOptedOut, asMarketing } from "./optOut.js";
 import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import mongoose from "mongoose";
 import { mailer } from "./mailer.js";
@@ -200,6 +201,7 @@ export const sendPostEventEmails = async (now = new Date()) => {
 
     for (const [email, name] of buyers) {
       if (already.has(email)) continue;
+      if (await isOptedOut(email)) continue;
       try {
         let row = await PostEventEmail.findOne({ eventId: String(pastEvent._id), email });
         if (!row) row = await PostEventEmail.create({ eventId: String(pastEvent._id), email });
@@ -239,7 +241,7 @@ export const sendPostEventEmails = async (now = new Date()) => {
           from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
           to: email,
           reply_to: "community@grownfolkscollective.com",
-          ...message,
+          ...asMarketing(message, email, "day-after"),
         });
         if (error) {
           row.error = error.message || "send failed";

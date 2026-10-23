@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { isOptedOut, asMarketing } from "./optOut.js";
 import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import mongoose from "mongoose";
 import { mailer } from "./mailer.js";
@@ -224,7 +225,9 @@ export const runReferrals = async (now = new Date()) => {
 
       const towardNext = ref.friends % FRIENDS_PER_REWARD;
       if (towardNext !== 0) {
-        await send(ref.email, buildProgressEmail({ name: ref.name, friendName: order.buyerName, shareCode: ref.code, towardNext }));
+        if (!(await isOptedOut(ref.email))) {
+          await send(ref.email, asMarketing(buildProgressEmail({ name: ref.name, friendName: order.buyerName, shareCode: ref.code, towardNext }), ref.email, "referral"));
+        }
         continue;
       }
 
