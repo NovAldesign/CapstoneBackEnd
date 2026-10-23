@@ -5,12 +5,13 @@ import Event from "../models/eventSchema.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import PromoCode from "../models/promoCodeSchema.js";
 import Membership from "../models/membershipSchema.js";
+import { isFoodEvent } from "./memberCredit.js";
 
 // -------------------------------------------------------
 // "We miss you" email
 // Who:   a past guest whose last GFC event was 30+ days ago, who has no ticket for an
 //        upcoming event and isn't an active or paused member
-// What:  their own code for 15% off one ticket, good for 7 days
+// What:  their own code for 15% off one ticket, good for 7 days, any event without food
 // When:  between 10 AM and 6 PM Eastern; once per absence (never twice for the
 //        same last event) and at most once every 60 days
 // Only guests whose last event was within the past 180 days, so the first run
@@ -83,7 +84,7 @@ export const buildWinBackEmail = ({ name, lastEventName, events, code, expiresAt
     <p>We miss you! It's been a little while since ${lastEventName ? `<strong>${escapeHtml(lastEventName)}</strong>` : "we've seen you"}, and the room isn't the same without you.</p>
     <p>Come join us again. Here's <strong>${PERCENT}% off a ticket</strong> to your next Grown Folks&trade; night:</p>
     <p style="margin:18px 0;"><span style="display:inline-block;border:2px dashed #C5A059;padding:10px 22px;font-size:22px;font-weight:bold;letter-spacing:3px;color:#002147;">${code}</span></p>
-    <p style="font-size:14px;color:#555;margin-top:0;">Good for one ticket. Use it by <strong>${escapeHtml(longDay(expiresAt))}</strong> (7 days). Can't be combined with the Plus One or the multi-event discount. The links below add the code for you.</p>
+    <p style="font-size:14px;color:#555;margin-top:0;">Good for one ticket to any event that doesn't include food. Use it by <strong>${escapeHtml(longDay(expiresAt))}</strong> (7 days). Can't be combined with the Plus One or the multi-event discount. The links below add the code for you.</p>
     <p style="margin:22px 0;"><a href="${SITE_URL}/events?code=${code}" style="display:inline-block;background:#002147;color:#ffffff;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:4px;">Pick your next event</a></p>
     ${list}
     <p>Hope to see you soon,</p>
@@ -98,7 +99,7 @@ export const buildWinBackEmail = ({ name, lastEventName, events, code, expiresAt
     `We miss you! It's been a little while since ${lastEventName || "we've seen you"}, and the room isn't the same without you.`,
     "",
     `Come join us again. Here's ${PERCENT}% off a ticket to your next Grown Folks™ night: ${code}`,
-    `Good for one ticket. Use it by ${longDay(expiresAt)} (7 days). Can't be combined with the Plus One or the multi-event discount.`,
+    `Good for one ticket to any event that doesn't include food. Use it by ${longDay(expiresAt)} (7 days). Can't be combined with the Plus One or the multi-event discount.`,
     "",
     `Pick your next event: ${SITE_URL}/events?code=${code}`,
     ...(events.length ? ["", "Coming up:", ...events.map((e) => `- ${e.name}, ${when(e.date)}: ${eventUrl(e, code)}`)] : []),
@@ -149,9 +150,9 @@ export const sendWinBackEmails = async (now = new Date()) => {
     (await Membership.find({ email: { $in: guests.map((g) => g._id) }, status: { $in: ["active", "paused"] } }).select("email").lean()).map((m) => m.email)
   );
   const upcoming = (
-    await Event.find({ status: "published", date: { $gt: now } }).sort({ date: 1 }).select("name date location isFree").limit(6).lean()
+    await Event.find({ status: "published", date: { $gt: now } }).sort({ date: 1 }).select("name date location isFree").limit(10).lean()
   )
-    .filter((e) => !e.isFree)
+    .filter((e) => !e.isFree && !isFoodEvent(e.name))
     .slice(0, 3);
 
   let sent = 0;
@@ -185,6 +186,7 @@ export const sendWinBackEmails = async (now = new Date()) => {
               oncePerOrder: true,
               maxUses: 1,
               noBundle: true,
+              noFood: true,
               source: "winback",
               notes: `"We miss you" email to ${email}`,
             });
