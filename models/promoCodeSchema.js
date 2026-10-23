@@ -14,7 +14,7 @@ const promoCodeSchema = new mongoose.Schema(
     active: { type: Boolean, default: true },
     expires: { type: String, default: null }, // "YYYY-MM-DD" (last day it works)
     expiresAt: { type: Date, default: null }, // exact moment it stops working (e.g. 48-hour thank-you codes)
-    source: { type: String, enum: ["artist", "manual", "thankyou"], default: "manual" }, // thankyou = 48-hour code from a day-after email
+    source: { type: String, enum: ["artist", "manual", "thankyou", "winback"], default: "manual" }, // one-off codes: thankyou = day-after email, winback = "we miss you" email
     artistId: { type: String, default: "" },
 
     // Rules (same meaning as in utilities/promoCodes.js)

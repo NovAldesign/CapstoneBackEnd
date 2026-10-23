@@ -51,6 +51,7 @@ import { runPartnerReminders } from "./utilities/partnerPortal.js";
 import { deliverScheduledGifts } from "./utilities/giftCards.js";
 import { sendDueMemberOffers } from "./utilities/memberOffer.js";
 import { sendPostEventEmails } from "./utilities/postEventEmail.js";
+import { sendWinBackEmails } from "./utilities/winBackEmail.js";
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -232,6 +233,11 @@ const startServer = async () => {
       const runThanks = () => sendPostEventEmails().catch((e) => console.error("Day-after emails:", e.message));
       setTimeout(runThanks, 3 * 60 * 1000);
       setInterval(runThanks, 15 * 60 * 1000);
+
+      // "We miss you" emails for guests away 30+ days, sent 10 AM to 6 PM Eastern (checks every hour)
+      const runWinBack = () => sendWinBackEmails().catch((e) => console.error("We miss you emails:", e.message));
+      setTimeout(runWinBack, 4 * 60 * 1000);
+      setInterval(runWinBack, 60 * 60 * 1000);
 
       // Partner portal: reminder emails for missing items (checks every 6 hours, sends every 4 days at most)
       const runPartners = () => runPartnerReminders().catch((e) => console.error("Partner reminders:", e.message));
