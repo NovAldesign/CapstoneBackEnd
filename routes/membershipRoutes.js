@@ -4,6 +4,7 @@ import { mailer } from "../utilities/mailer.js";
 import dotenv from 'dotenv';
 import Membership from '../models/membershipSchema.js';
 import { grantMonthlyCreditFromInvoice } from '../utilities/memberCredit.js';
+import { creditJoinOffer } from '../utilities/memberOffer.js';
 import { syncFromSubscription } from './memberRoutes.js';
 
 // 1. Core Config initialization — MUST run before instantiating Stripe/Resend constructors
@@ -383,6 +384,12 @@ router.post('/webhook', async (req, res) => {
     try {
       const lot = await grantMonthlyCreditFromInvoice(event.data.object);
       if (lot) console.log(`💳 Member credit added: ${lot.cents / 100} (${lot.key})`);
+      // First month of a new membership: credit back the ticket from a "become a member" offer
+      if (lot && event.data.object.billing_reason === 'subscription_create') {
+        const member = await Membership.findById(lot.member);
+        const back = await creditJoinOffer(member, { paidAt: lot.createdAt, expiresAt: lot.expiresAt });
+        if (back) console.log(`💳 Join offer credit added: ${back.cents / 100} (${back.key})`);
+      }
     } catch (error) {
       console.error('❌ Member credit grant errored:', error);
     }

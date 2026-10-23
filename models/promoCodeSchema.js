@@ -23,6 +23,9 @@ const promoCodeSchema = new mongoose.Schema(
     maxUses: { type: Number, default: 0 }, // 0 = no limit (counts paid orders)
     eventsOnOrBefore: { type: String, default: null }, // "YYYY-MM-DD": only events on or before this date
     noFood: { type: Boolean, default: false }, // doesn't work for food events
+    noBundle: { type: Boolean, default: false }, // no multi-event bundle discount with it
+    returningOnly: { type: Boolean, default: false }, // only for emails that HAVE bought before
+    oncePerEmail: { type: Boolean, default: false }, // one paid order per email
     notes: { type: String, default: "", trim: true },
   },
   { timestamps: true }

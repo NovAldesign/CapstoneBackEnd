@@ -82,10 +82,13 @@ router.post("/validate", async (req, res) => {
       appliesToAllEvents:
         (!promo.events || promo.events.length === 0) &&
         (!promo.eventIds || promo.eventIds.length === 0) &&
-        !promo.eventsOnOrBefore,
+        !promo.eventsOnOrBefore &&
+        !promo.noFood,
       eligibleEventIds,
       oncePerOrder: Boolean(promo.oncePerOrder),
       firstTimeOnly: Boolean(promo.firstTimeOnly),
+      returningOnly: Boolean(promo.returningOnly),
+      noBundle: Boolean(promo.noBundle),
       needsEmail: promoNeedsEmail(promo),
       // Artist and tracking codes still work with the Plus One deal (credit only, no discount)
       worksWithPlusOne: promo.type === "tracking" || promo.source === "artist",

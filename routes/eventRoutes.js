@@ -6,7 +6,7 @@ import Event from '../models/eventSchema.js';
 import Order from '../models/orderSchema.js';
 import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders.js';
 import { isPlusOne, guestsPerTicket, plusOneMemberCents, plusOneAllowed, groupSize } from '../utilities/plusOne.js';
-import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail } from '../utilities/promoCodes.js';
+import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail, usedCodeBefore } from '../utilities/promoCodes.js';
 import crypto from 'crypto';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 import { findUsableCard, cardCredit, redeemCard, looksLikeCard } from '../utilities/giftCards.js';
@@ -329,6 +329,12 @@ router.post('/checkout', async (req, res, next) => {
         return res.status(400).json({ error: `${promo.code.toUpperCase()} is for your first GFC event, and it looks like you've been with us before. Welcome back! Remove the code to continue.` });
       }
     }
+    if (promo?.returningOnly && !(await hasBoughtBefore(cleanEmail))) {
+      return res.status(400).json({ error: `${promo.code.toUpperCase()} is a thank-you for returning guests, and we don't see a past ticket for ${cleanEmail}. Use the email you bought with before, or remove the code to continue.` });
+    }
+    if (promo?.oncePerEmail && (await usedCodeBefore(promo, cleanEmail))) {
+      return res.status(400).json({ error: `${promo.code.toUpperCase()} has already been used with ${cleanEmail}. Remove the code to continue.` });
+    }
 
     if (!Array.isArray(cartItems) || cartItems.length === 0) {
       return res.status(400).json({ error: 'Your cart is completely empty.' });
@@ -461,6 +467,8 @@ router.post('/checkout', async (req, res, next) => {
 
     if (hasPlusOne) {
       // no bundle discount on Plus One orders
+    } else if (promo?.noBundle && verifiedItems.some((i) => i.codeApplies)) {
+      // welcome codes (WELCOME5, WELCOMEBACK10) don't combine with the bundle discount
     } else if (uniqueEventCount === 2) {
       discountMultiplier = 0.95;
       discountLabel = ' (5% Multi-Event Bundle Discount Applied)';

@@ -7,14 +7,15 @@ import { isFoodEvent } from "./memberCredit.js";
 // -------------------------------------------------------
 // Newsletter welcome email
 // Sent once, right after someone joins the newsletter on the website.
-// First-time guests get code WELCOME5: $5 off one ticket, any event without food
-// (the code's rules live in utilities/promoCodes.js).
-// People who already bought a ticket get the same welcome without the code.
+// First-time guests get code WELCOME5: $5 off one ticket, any event without food.
+// People who already bought a ticket get WELCOMEBACK10: 10% off one order, any event without food.
+// Neither combines with the multi-event bundle discount (rules live in utilities/promoCodes.js).
 // -------------------------------------------------------
 const SITE_URL = "https://www.grownfolkscollective.com";
 const LOGO = `${SITE_URL}/email/gfc-logo.png`;
 const TEAM_EMAIL = "community@grownfolkscollective.com";
-const CODE = "WELCOME5";
+const FIRST_CODE = "WELCOME5";
+const BACK_CODE = "WELCOMEBACK10";
 const TIME_ZONE = "America/New_York";
 
 const escapeHtml = (value = "") =>
@@ -48,8 +49,8 @@ const nextEvents = async (limit = 3) => {
   return upcoming.filter((e) => !e.isFree && !isFoodEvent(e.name)).slice(0, limit);
 };
 
-export const buildWelcomeEmail = ({ name, withCode, events }) => {
-  const code = withCode ? CODE : "";
+export const buildWelcomeEmail = ({ name, returning = false, events }) => {
+  const code = returning ? BACK_CODE : FIRST_CODE;
   const allEvents = `${SITE_URL}/events${code ? `?code=${code}` : ""}`;
   const list = events.length
     ? `<p style="margin:22px 0 8px;"><strong>Coming up next:</strong></p>
@@ -63,16 +64,19 @@ export const buildWelcomeEmail = ({ name, withCode, events }) => {
        </ul>`
     : "";
 
-  const offer = withCode
-    ? `<p>We'd love for you to join us at an event. Here's <strong>$5 off a ticket</strong> to get you in the room:</p>
-       <p style="margin:18px 0;"><span style="display:inline-block;border:2px dashed #C5A059;padding:10px 22px;font-size:22px;font-weight:bold;letter-spacing:3px;color:#002147;">${CODE}</span></p>
-       <p style="font-size:14px;color:#555;margin-top:0;">Good for one ticket to any event that doesn't include food, for your first GFC ticket. The links below add the code for you.</p>`
-    : `<p>We'd love to see you at our next event. Here's what's coming up.</p>`;
+  const codeBox = `<p style="margin:18px 0;"><span style="display:inline-block;border:2px dashed #C5A059;padding:10px 22px;font-size:22px;font-weight:bold;letter-spacing:3px;color:#002147;">${code}</span></p>`;
+  const offer = returning
+    ? `<p>It's good to have you back! As a thank-you for coming out with us before, here's <strong>10% off your next order</strong>:</p>
+       ${codeBox}
+       <p style="font-size:14px;color:#555;margin-top:0;">Good for one order, any event that doesn't include food. Can't be combined with the multi-event discount. The links below add the code for you.</p>`
+    : `<p>We'd love for you to join us at an event. Here's <strong>$5 off a ticket</strong> to get you in the room:</p>
+       ${codeBox}
+       <p style="font-size:14px;color:#555;margin-top:0;">Good for one ticket to any event that doesn't include food, for your first GFC ticket. Can't be combined with the multi-event discount. The links below add the code for you.</p>`;
 
   const html = `
   <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
     <p>Hi ${escapeHtml(firstName(name))},</p>
-    <p>Welcome to Grown Folks&trade; Collective! Thank you for joining us. We host game nights, Karaoke Bingo, live music and more for Atlanta's 30+ crowd, all alcohol-free, all about good people and real connection.</p>
+    <p>${returning ? "Thank you for joining the Grown Folks™ Collective newsletter!" : "Welcome to Grown Folks&trade; Collective! Thank you for joining us. We host game nights, Karaoke Bingo, live music and more for Atlanta's 30+ crowd, all alcohol-free, all about good people and real connection."}</p>
     ${offer}
     <p style="margin:22px 0;"><a href="${allEvents}" style="display:inline-block;background:#002147;color:#ffffff;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:4px;">See upcoming events</a></p>
     ${list}
@@ -86,11 +90,13 @@ export const buildWelcomeEmail = ({ name, withCode, events }) => {
   const text = [
     `Hi ${firstName(name)},`,
     "",
-    "Welcome to Grown Folks™ Collective! Thank you for joining us. We host game nights, Karaoke Bingo, live music and more for Atlanta's 30+ crowd, all alcohol-free, all about good people and real connection.",
+    returning
+      ? "Thank you for joining the Grown Folks™ Collective newsletter!"
+      : "Welcome to Grown Folks™ Collective! Thank you for joining us. We host game nights, Karaoke Bingo, live music and more for Atlanta's 30+ crowd, all alcohol-free, all about good people and real connection.",
     "",
-    withCode
-      ? `We'd love for you to join us at an event. Here's $5 off a ticket to get you in the room: ${CODE}\nGood for one ticket to any event that doesn't include food, for your first GFC ticket.`
-      : "We'd love to see you at our next event.",
+    returning
+      ? `It's good to have you back! As a thank-you for coming out with us before, here's 10% off your next order: ${code}\nGood for one order, any event that doesn't include food. Can't be combined with the multi-event discount.`
+      : `We'd love for you to join us at an event. Here's $5 off a ticket to get you in the room: ${code}\nGood for one ticket to any event that doesn't include food, for your first GFC ticket. Can't be combined with the multi-event discount.`,
     "",
     `See upcoming events: ${allEvents}`,
     ...(events.length ? ["", "Coming up next:", ...events.map((e) => `- ${e.name}, ${when(e.date)}: ${eventUrl(e, code)}`)] : []),
@@ -106,7 +112,7 @@ export const buildWelcomeEmail = ({ name, withCode, events }) => {
   ].join("\n");
 
   return {
-    subject: withCode ? "Welcome to Grown Folks Collective: here's $5 off" : "Welcome to Grown Folks Collective",
+    subject: returning ? "Welcome back to Grown Folks Collective: here's 10% off" : "Welcome to Grown Folks Collective: here's $5 off",
     html,
     text,
   };
@@ -117,7 +123,7 @@ export const sendWelcomeEmail = async (subscriber) => {
   try {
     if (!mailer || !subscriber?.email || subscriber.welcomeSentAt) return false;
     const [boughtBefore, events] = await Promise.all([hasBoughtBefore(subscriber.email), nextEvents()]);
-    const email = buildWelcomeEmail({ name: subscriber.fullName, withCode: !boughtBefore, events });
+    const email = buildWelcomeEmail({ name: subscriber.fullName, returning: boughtBefore, events });
     const { error } = await mailer.emails.send({
       from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
       to: subscriber.email,
@@ -127,7 +133,7 @@ export const sendWelcomeEmail = async (subscriber) => {
     if (error) return false;
     await Subscriber.updateOne(
       { _id: subscriber._id },
-      { $set: { welcomeSentAt: new Date(), welcomeCode: boughtBefore ? "" : CODE } }
+      { $set: { welcomeSentAt: new Date(), welcomeCode: boughtBefore ? BACK_CODE : FIRST_CODE } }
     );
     return true;
   } catch (err) {

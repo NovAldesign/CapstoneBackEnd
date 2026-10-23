@@ -1,5 +1,6 @@
 import { mailer } from "./mailer.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
+import { queueMemberOffer } from "./memberOffer.js";
 import Event from "../models/eventSchema.js";
 import { lineGuests, guestsPerTicket } from "./plusOne.js";
 
@@ -148,7 +149,9 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
     };
   });
   await order.save();
-  return sendOrderEmails(order, { team: true });
+  const sent = await sendOrderEmails(order, { team: true });
+  queueMemberOffer(order); // "become a member" email the next morning for 4+ event guests
+  return sent;
 };
 
 /* -------------------------------------------------------
