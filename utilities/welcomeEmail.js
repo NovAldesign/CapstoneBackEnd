@@ -82,7 +82,7 @@ export const buildWelcomeEmail = ({ name, returning = false, events }) => {
     ${offer}
     <p style="margin:22px 0;"><a href="${allEvents}" style="display:inline-block;background:#002147;color:#ffffff;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:4px;">See upcoming events</a></p>
     ${list}
-    <p>You'll hear from us whenever new events go live.</p>
+    <p>Look for our weekly newsletter with everything coming up, plus first word on new events.</p>
     <p>See you soon,</p>
     <p>Vaughn<br/>Chief Playmaker<br/>Grown Folks&trade; Collective</p>
     <p><img src="${LOGO}" width="110" alt="Grown Folks Collective" style="display:block;width:110px;height:auto;border:0;"></p>
@@ -104,7 +104,7 @@ export const buildWelcomeEmail = ({ name, returning = false, events }) => {
     `See upcoming events: ${allEvents}`,
     ...(events.length ? ["", "Coming up next:", ...events.map((e) => `- ${e.name}, ${when(e.date)}: ${eventUrl(e, code)}`)] : []),
     "",
-    "You'll hear from us whenever new events go live.",
+    "Look for our weekly newsletter with everything coming up, plus first word on new events.",
     "",
     "See you soon,",
     "Vaughn",
