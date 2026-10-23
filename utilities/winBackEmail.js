@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import mongoose from "mongoose";
 import { mailer } from "./mailer.js";
 import Event from "../models/eventSchema.js";
@@ -91,6 +92,7 @@ export const buildWinBackEmail = ({ name, lastEventName, events, code, expiresAt
     <p>Vaughn<br/>Chief Playmaker<br/>Grown Folks&trade; Collective</p>
     <p><img src="${LOGO}" width="110" alt="Grown Folks Collective" style="display:block;width:110px;height:auto;border:0;"></p>
     <p style="font-style:italic;color:#9A7630;">Where grown folks come out to play.&trade;</p>
+    ${shopStripHtml()}
   </div>`;
 
   const text = [
@@ -110,6 +112,8 @@ export const buildWinBackEmail = ({ name, lastEventName, events, code, expiresAt
     "Grown Folks™ Collective",
     "",
     "Where grown folks come out to play.™",
+    "",
+    shopStripText(),
   ].join("\n");
 
   return { subject: `We miss you, ${firstName(name)}`, html, text };

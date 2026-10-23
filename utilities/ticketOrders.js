@@ -1,4 +1,5 @@
 import { mailer } from "./mailer.js";
+import { shopStripHtml } from "./shopStrip.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import { queueMemberOffer } from "./memberOffer.js";
 import Event from "../models/eventSchema.js";
@@ -247,7 +248,12 @@ export const sendOrderEmails = async (order, { team = false, to = "" } = {}) => 
           <p style="font-size:14px;line-height:1.6;color:#444;margin:0 0 20px;">
             Questions or changes? Just reply to this email.
           </p>
+          <p style="font-size:14px;line-height:1.6;color:#444;margin:0 0 20px;">
+            <strong>Know someone who'd love a night like this?</strong> Gift them a ticket with a
+            <a href="${SITE_URL}/gift" style="color:#9A7630;font-weight:bold;">GFC gift card</a>, delivered on the day you choose.
+          </p>
           <p style="font-size:15px;color:#002147;margin:0;">See you soon,<br/><strong>Grown Folks Collective</strong></p>
+          ${shopStripHtml()}
         </div>
       </div>
     </div>`;

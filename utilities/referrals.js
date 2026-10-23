@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import mongoose from "mongoose";
 import { mailer } from "./mailer.js";
 import PromoCode from "../models/promoCodeSchema.js";
@@ -122,10 +123,11 @@ const wrap = (body) => `
     <p>Vaughn<br/>Chief Playmaker<br/>Grown Folks&trade; Collective</p>
     <p><img src="${LOGO}" width="110" alt="Grown Folks Collective" style="display:block;width:110px;height:auto;border:0;"></p>
     <p style="font-style:italic;color:#9A7630;">Where grown folks come out to play.&trade;</p>
+    ${shopStripHtml()}
   </div>`;
 const codeBox = (code) =>
   `<p style="margin:16px 0;"><span style="display:inline-block;border:2px dashed #C5A059;padding:10px 22px;font-size:22px;font-weight:bold;letter-spacing:3px;color:#002147;">${code}</span></p>`;
-const signoff = ["Vaughn", "Chief Playmaker", "Grown Folks™ Collective", "", "Where grown folks come out to play.™"];
+const signoff = ["Vaughn", "Chief Playmaker", "Grown Folks™ Collective", "", "Where grown folks come out to play.™", "", shopStripText()];
 
 export const buildProgressEmail = ({ name, friendName, shareCode, towardNext }) => {
   const left = FRIENDS_PER_REWARD - towardNext;

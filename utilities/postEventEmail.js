@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import mongoose from "mongoose";
 import { mailer } from "./mailer.js";
 import Event from "../models/eventSchema.js";
@@ -123,10 +124,12 @@ export const buildPostEventEmail = ({ name, pastEvent, nextEvent, plusOne, code,
     ${friendBlock}
     ${aloneBlock}
     ${newFriend}
+    <p><strong>Loved last night?</strong> Take the vibe home with <a href="${SITE_URL}/shop" style="color:#9A7630;font-weight:bold;">Grown Folks&trade; merch</a>, made to order.</p>
     <p>See you soon,</p>
     <p>Vaughn<br/>Chief Playmaker<br/>Grown Folks&trade; Collective</p>
     <p><img src="${LOGO}" width="110" alt="Grown Folks Collective" style="display:block;width:110px;height:auto;border:0;"></p>
     <p style="font-style:italic;color:#9A7630;">Where grown folks come out to play.&trade;</p>
+    ${shopStripHtml()}
   </div>`;
 
   const text = [
@@ -153,12 +156,16 @@ export const buildPostEventEmail = ({ name, pastEvent, nextEvent, plusOne, code,
       ? `BRING YOUR FOLKS, EARN FREE TICKETS\nYour own code is ${shareCode}. Friends who use it get $5 off their first ticket, and every ${FRIENDS_PER_REWARD} friends who come out earns you a free ticket.\nShare this link: ${shareLink(shareCode)}`
       : `First time for your friend? They can join our newsletter at ${SITE_URL} for $5 off their own first ticket.`,
     "",
+    `Loved last night? Take the vibe home with Grown Folks™ merch, made to order: ${SITE_URL}/shop`,
+    "",
     "See you soon,",
     "Vaughn",
     "Chief Playmaker",
     "Grown Folks™ Collective",
     "",
     "Where grown folks come out to play.™",
+    "",
+    shopStripText(),
   ].join("\n");
 
   return { subject: `Thank you for coming out, ${firstName(name)}!`, html, text };
