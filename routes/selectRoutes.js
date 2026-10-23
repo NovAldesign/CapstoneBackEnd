@@ -816,4 +816,40 @@ router.post("/admin/notify/email", admin, async (req, res) => {
   }
 });
 
+/* -------------------------------------------------------
+   Newsletter signups that ticked "Tell me about GFC Select™"
+   (routes/subscriberRoutes.js). Adds them to the notify list and sends the
+   same "you're on the list" email, once. Never throws.
+------------------------------------------------------- */
+export const joinSelectFromNewsletter = async ({ fullName, email, gender, phone, textOk, source }) => {
+  try {
+    const cleanEmail = clean(email, 120).toLowerCase();
+    const firstName = clean(String(fullName || "").trim().split(/\s+/)[0], 40);
+    if (!firstName || !isEmail(cleanEmail)) return false;
+    const g = GENDERS.includes(gender) ? gender : "";
+    const existing = await SelectNotify.findOne({ email: cleanEmail });
+    if (existing) {
+      const update = { newsletter: true };
+      if (g && !existing.gender) update.gender = g;
+      if (phone && !existing.phone) Object.assign(update, { phone: clean(phone, 30), textOk: Boolean(textOk) });
+      await SelectNotify.updateOne({ _id: existing._id }, update);
+      return false;
+    }
+    await SelectNotify.create({
+      firstName,
+      email: cleanEmail,
+      gender: g,
+      phone: clean(phone, 30),
+      textOk: Boolean(phone) && Boolean(textOk),
+      newsletter: true,
+      source: clean(source || "newsletter", 60),
+    });
+    sendSelectEmail(cleanEmail, firstName, notifyConfirm({ firstName, gender: g, doors: await doorsNow() }));
+    return true;
+  } catch (err) {
+    if (err.code !== 11000) console.error("Select from newsletter error:", err.message);
+    return false;
+  }
+};
+
 export default router;
