@@ -19,7 +19,10 @@ const memberOfferSchema = new mongoose.Schema(
     eventsAttended: { type: Number, default: 0 },
     spentCents: { type: Number, default: 0 },
     skipReason: { type: String, default: "" },
-    redeemedAt: { type: Date, default: null },
+    joinedAt: { type: Date, default: null }, // first membership payment from this offer
+    creditDueAt: { type: Date, default: null }, // 30 days after joining
+    forfeitedAt: { type: Date, default: null }, // canceled before the 30 days were up
+    redeemedAt: { type: Date, default: null }, // credit added
     memberId: { type: String, default: "" },
   },
   { timestamps: true }

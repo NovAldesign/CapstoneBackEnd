@@ -387,8 +387,8 @@ router.post('/webhook', async (req, res) => {
       // First month of a new membership: credit back the ticket from a "become a member" offer
       if (lot && event.data.object.billing_reason === 'subscription_create') {
         const member = await Membership.findById(lot.member);
-        const back = await creditJoinOffer(member, { paidAt: lot.createdAt, expiresAt: lot.expiresAt });
-        if (back) console.log(`💳 Join offer credit added: ${back.cents / 100} (${back.key})`);
+        const offer = await creditJoinOffer(member, { paidAt: lot.createdAt });
+        if (offer) console.log(`💳 Join offer: credit-back of ${offer.creditCents / 100} due in 30 days (${member.email})`);
       }
     } catch (error) {
       console.error('❌ Member credit grant errored:', error);

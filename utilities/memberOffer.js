@@ -107,7 +107,7 @@ export const buildMemberOfferEmail = ({ name, eventName, eventsAttended, spentCe
       <li><strong>Founding Member, $69.99/mo:</strong> ${money(founding)} in event credit every month, plus ${money(MEMBER_TICKET_OFF_CENTS.Founding)} off every ticket and a $25 birthday credit</li>
     </ul>
     ${spentCents > 0 ? `<p>You've spent <strong>${money(spentCents)}</strong> on tickets with us so far. As a member, your monthly credit covers nights like these.</p>` : ""}
-    ${credit ? `<div style="background:#FAF7F0;border-left:3px solid #C5A059;padding:14px 16px;margin:20px 0;"><strong>Join by ${escapeHtml(longDate(expiresAt))}</strong> and the ${money(creditCents)} you just paid for ${event} comes back to you as member credit for your next event.</div>` : ""}
+    ${credit ? `<div style="background:#FAF7F0;border-left:3px solid #C5A059;padding:14px 16px;margin:20px 0;"><strong>Join by ${escapeHtml(longDate(expiresAt))}</strong> and stay a member for 30 days, and the ${money(creditCents)} you just paid for ${event} comes back to you as member credit for a future event.</div>` : ""}
     <p style="margin:22px 0;"><a href="${joinUrl}" style="display:inline-block;background:#002147;color:#ffffff;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:4px;">Become a member</a></p>
     <p>Questions about membership? Just reply to this email.</p>
     <p>See you soon,</p>
@@ -126,7 +126,7 @@ export const buildMemberOfferEmail = ({ name, eventName, eventsAttended, spentCe
     `- Social Pass, $39.99/mo: ${money(social)} in event credit every month (it rolls over a month), plus ${money(MEMBER_TICKET_OFF_CENTS.Social)} off every ticket and a $25 birthday credit`,
     `- Founding Member, $69.99/mo: ${money(founding)} in event credit every month, plus ${money(MEMBER_TICKET_OFF_CENTS.Founding)} off every ticket and a $25 birthday credit`,
     ...(spentCents > 0 ? ["", `You've spent ${money(spentCents)} on tickets with us so far. As a member, your monthly credit covers nights like these.`] : []),
-    ...(credit ? ["", `Join by ${longDate(expiresAt)} and the ${money(creditCents)} you just paid for ${eventName || "your ticket"} comes back to you as member credit for your next event.`] : []),
+    ...(credit ? ["", `Join by ${longDate(expiresAt)} and stay a member for 30 days, and the ${money(creditCents)} you just paid for ${eventName || "your ticket"} comes back to you as member credit for a future event.`] : []),
     "",
     `Become a member: ${joinUrl}`,
     "",
@@ -193,30 +193,80 @@ export const sendDueMemberOffers = async (now = new Date()) => {
 };
 
 // When a new member's first month is paid: if they joined from an offer in time,
-// credit back what they paid for that order (once). Never throws.
-export const creditJoinOffer = async (member, { paidAt = new Date(), expiresAt } = {}) => {
+// the credit-back is set for 30 days later (granted by grantDueJoinCredits). Never throws.
+export const CREDIT_AFTER_DAYS = 30;
+export const creditJoinOffer = async (member, { paidAt = new Date() } = {}) => {
   try {
     if (!member?._id || !member.email) return null;
     const offer = await MemberOffer.findOne({
       email: String(member.email).toLowerCase(),
       status: "sent",
       redeemedAt: null,
+      joinedAt: null,
       expiresAt: { $gte: paidAt },
       creditCents: { $gt: 0 },
     }).sort({ sentAt: -1 });
     if (!offer) return null;
-    const row = await grantCredit({
-      memberId: member._id,
-      type: "bonus",
-      cents: offer.creditCents,
-      expiresAt,
-      note: `Welcome credit: your ${offer.eventName || "ticket"} order, credited back for joining`,
-      key: `join-offer:${offer._id}`,
-    });
-    if (row) await MemberOffer.updateOne({ _id: offer._id }, { redeemedAt: new Date(), memberId: String(member._id) });
-    return row;
+    await MemberOffer.updateOne(
+      { _id: offer._id },
+      { joinedAt: paidAt, memberId: String(member._id), creditDueAt: new Date(new Date(paidAt).getTime() + CREDIT_AFTER_DAYS * DAY) }
+    );
+    return offer;
   } catch (err) {
     console.error("Join offer credit:", err.message);
     return null;
   }
+};
+
+// Runs on a timer (server.js): 30 days after joining, if the membership is still active,
+// add the credit-back and tell them. Canceled by then = no credit. Paused = wait. Never throws.
+const CREDIT_GOOD_DAYS = 60; // the credit-back is good for 60 days
+export const grantDueJoinCredits = async (now = new Date()) => {
+  let granted = 0;
+  const due = await MemberOffer.find({ creditDueAt: { $lte: now }, redeemedAt: null, forfeitedAt: null, memberId: { $ne: "" } }).limit(50);
+  for (const offer of due) {
+    try {
+      const member = await Membership.findById(offer.memberId);
+      if (!member || member.status === "canceled") {
+        await MemberOffer.updateOne({ _id: offer._id }, { forfeitedAt: now });
+        continue;
+      }
+      if (member.status !== "active") continue; // paused or pending: check again later
+      const expiresAt = new Date(now.getTime() + CREDIT_GOOD_DAYS * DAY);
+      const row = await grantCredit({
+        memberId: member._id,
+        type: "bonus",
+        cents: offer.creditCents,
+        expiresAt,
+        note: `Welcome credit: your ${offer.eventName || "ticket"} order, credited back after 30 days as a member`,
+        key: `join-offer:${offer._id}`,
+      });
+      if (!row) continue;
+      await MemberOffer.updateOne({ _id: offer._id }, { redeemedAt: now });
+      granted++;
+      if (mailer) {
+        const first = escapeHtml(firstName(member.firstName || offer.name));
+        await mailer.emails.send({
+          from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
+          to: member.email,
+          reply_to: "community@grownfolkscollective.com",
+          subject: `Your ${money(offer.creditCents)} welcome credit is in`,
+          html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
+            <p>Hi ${first},</p>
+            <p>Thank you for your first month as a Grown Folks&trade; member! As promised, the <strong>${money(offer.creditCents)}</strong> you paid for ${escapeHtml(offer.eventName || "your ticket")} is now <strong>member credit</strong> in your account, good through ${escapeHtml(longDate(expiresAt))}.</p>
+            <p>It comes off automatically when you log in and check out. Use it on any event your monthly credit covers.</p>
+            <p style="margin:22px 0;"><a href="${SITE_URL}/events" style="display:inline-block;background:#002147;color:#ffffff;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:4px;">Pick an event</a></p>
+            <p>See you soon,</p>
+            <p>Vaughn<br/>Chief Playmaker<br/>Grown Folks&trade; Collective</p>
+            <p><img src="${LOGO}" width="110" alt="Grown Folks Collective" style="display:block;width:110px;height:auto;border:0;"></p>
+            <p style="font-style:italic;color:#9A7630;">Where grown folks come out to play.&trade;</p>
+          </div>`,
+          text: `Hi ${firstName(member.firstName || offer.name)},\n\nThank you for your first month as a Grown Folks™ member! As promised, the ${money(offer.creditCents)} you paid for ${offer.eventName || "your ticket"} is now member credit in your account, good through ${longDate(expiresAt)}.\n\nIt comes off automatically when you log in and check out.\n\nPick an event: ${SITE_URL}/events\n\nSee you soon,\nVaughn\nChief Playmaker\nGrown Folks™ Collective`,
+        });
+      }
+    } catch (err) {
+      console.error("Join credit grant:", err.message);
+    }
+  }
+  return granted;
 };
