@@ -15,7 +15,7 @@ import mongoose from "mongoose";
 // -------------------------------------------------------
 const API_URL = (process.env.BACKEND_URL || "https://capstonebackend-production-87ed.up.railway.app").replace(/\/$/, "");
 const SECRET = () => process.env.UNSUBSCRIBE_SECRET || process.env.JWT_SECRET || "gfc-unsubscribe";
-export const MAILING_ADDRESS = process.env.MAILING_ADDRESS || "Grown Folks Collective, Atlanta, GA";
+export const MAILING_ADDRESS = process.env.MAILING_ADDRESS || "Grown Folks Collective, 8735 Dunwoody Place, Suite R, Atlanta, GA 30350";
 
 const EmailOptOut =
   mongoose.models.EmailOptOut ||
