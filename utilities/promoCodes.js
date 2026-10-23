@@ -55,6 +55,7 @@ export const normalizeCode = (code = "") =>
 
 export const isLive = (promo) => {
   if (!promo || !promo.active) return false;
+  if (promo.expiresAt && new Date() > new Date(promo.expiresAt)) return false;
   if (promo.expires) {
     const lastDay = new Date(`${promo.expires}T23:59:59-05:00`);
     if (new Date() > lastDay) return false;

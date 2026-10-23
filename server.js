@@ -50,6 +50,7 @@ import partnerPortalRoutes from "./routes/partnerPortalRoutes.js";
 import { runPartnerReminders } from "./utilities/partnerPortal.js";
 import { deliverScheduledGifts } from "./utilities/giftCards.js";
 import { sendDueMemberOffers } from "./utilities/memberOffer.js";
+import { sendPostEventEmails } from "./utilities/postEventEmail.js";
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -226,6 +227,11 @@ const startServer = async () => {
       const runOffers = () => sendDueMemberOffers().catch((e) => console.error("Member offers:", e.message));
       setTimeout(runOffers, 2 * 60 * 1000);
       setInterval(runOffers, 15 * 60 * 1000);
+
+      // Day-after "thank you for coming" emails, 10 AM Eastern the morning after each event (checks every 15 minutes)
+      const runThanks = () => sendPostEventEmails().catch((e) => console.error("Day-after emails:", e.message));
+      setTimeout(runThanks, 3 * 60 * 1000);
+      setInterval(runThanks, 15 * 60 * 1000);
 
       // Partner portal: reminder emails for missing items (checks every 6 hours, sends every 4 days at most)
       const runPartners = () => runPartnerReminders().catch((e) => console.error("Partner reminders:", e.message));
