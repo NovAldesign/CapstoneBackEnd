@@ -1,6 +1,7 @@
 import express from "express";
 import { mailer } from "../utilities/mailer.js";
 import HostingInquiry from "../models/hostingInquirySchema.js";
+import { savingsForRequest } from "../utilities/hostingSpecials.js";
 
 const router = express.Router();
 const resend = mailer; // shared sender: spaced out, retried, failures logged
@@ -75,7 +76,15 @@ router.post("/", async (req, res) => {
       frequency: FREQUENCIES.includes(req.body.frequency) ? req.body.frequency : "One-time event",
       notes: clean(req.body.notes, 1500),
       source: clean(req.body.source, 60),
+      savingsCode: clean(req.body.savingsCode, 30).toUpperCase(),
     });
+
+    // Which savings apply ($99 planner signup, or the current booking special). Quoted by hand.
+    const savings = await savingsForRequest({ email, code: inquiry.savingsCode }).catch(() => ({ note: "" }));
+    if (savings.note) {
+      inquiry.savingsNote = savings.note;
+      await inquiry.save().catch(() => {});
+    }
 
     // Emails should never block the submission
     if (resend) {
@@ -98,7 +107,17 @@ router.post("/", async (req, res) => {
           ${row("City", inquiry.city)}
           ${row("Töst toast upgrade", inquiry.toastUpgrade ? "Yes" : "No")}
           ${row("Notes", inquiry.notes)}
+          ${inquiry.savingsCode ? row("Savings code", inquiry.savingsCode) : ""}
         </table>`;
+      const savingsBox = savings.note
+        ? `<p style="margin-top:16px;padding:12px 14px;border-left:4px solid #C5A059;background:#FBF7EE;font-size:15px;"><strong>Savings:</strong> ${escapeHtml(savings.note)}</p>`
+        : "";
+      // What the guest sees in their copy
+      const theirSavings = savings.planner
+        ? `Your $${savings.planner.amount} planner savings is noted${savings.special ? `. We'll compare it with our ${escapeHtml(savings.special.title)} ($${savings.special.amount} off ${escapeHtml(savings.special.covers)} booked by ${escapeHtml(savings.special.endsLabel)}) and give you whichever saves more` : ""}.`
+        : savings.special
+          ? `Booking ${escapeHtml(savings.special.covers)}? Book by ${escapeHtml(savings.special.endsLabel)} and save $${savings.special.amount} with our ${escapeHtml(savings.special.title)}.`
+          : "";
 
       // 1. Notify the team
       resend.emails
@@ -106,11 +125,12 @@ router.post("/", async (req, res) => {
           from: "GFC Hosting <noreply@grownfolkscollective.com>",
           to: TEAM_EMAIL,
           reply_to: inquiry.email,
-          subject: `🥂 ${inquiry.frequency === "One-time event" ? "Hosting request" : `SERIES request (${inquiry.frequency})`}: ${inquiry.organization || `${inquiry.firstName} ${inquiry.lastName}`}, ${inquiry.guestCount} guests`,
+          subject: `${savings.planner ? "[$99 planner] " : ""}${inquiry.frequency === "One-time event" ? "Hosting request" : `SERIES request (${inquiry.frequency})`}: ${inquiry.organization || `${inquiry.firstName} ${inquiry.lastName}`}, ${inquiry.guestCount} guests`,
           html: `
             <div style="font-family:sans-serif;padding:20px;color:#002147;">
               <h2 style="border-bottom:2px solid #C5A059;padding-bottom:10px;">New Play. Sip. Toast. Request</h2>
               ${details}
+              ${savingsBox}
               <p style="margin-top:20px;color:#666;">Hit reply to answer ${escapeHtml(inquiry.firstName)} directly. Try to call within 1 business day.</p>
             </div>`,
         })
@@ -132,6 +152,7 @@ router.post("/", async (req, res) => {
               </p>
               <h3 style="border-bottom:2px solid #C5A059;padding-bottom:8px;">What you sent us</h3>
               ${details}
+              ${theirSavings ? `<p style="font-size:15px;line-height:1.6;margin-top:16px;">${theirSavings}</p>` : ""}
               <p style="font-size:15px;line-height:1.6;margin-top:20px;">
                 Questions? Just reply to this email or call/text 470-256-7729.
               </p>

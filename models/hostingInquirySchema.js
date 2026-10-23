@@ -19,6 +19,8 @@ const hostingInquirySchema = new mongoose.Schema(
     frequency: { type: String, default: "One-time event", trim: true }, // one-time or a series
     notes: { type: String, default: "", trim: true },
     source: { type: String, default: "", trim: true }, // ?src= from the link
+    savingsCode: { type: String, default: "", trim: true }, // planner signup code they entered
+    savingsNote: { type: String, default: "", trim: true }, // which savings apply (utilities/hostingSpecials.js)
 
     status: {
       type: String,

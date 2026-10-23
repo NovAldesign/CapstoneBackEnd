@@ -1,8 +1,11 @@
 import express from "express";
 import Subscriber from "../models/subscriberSchema.js";
 import { sendWelcomeEmail } from "../utilities/welcomeEmail.js";
+import { sendPlannerWelcome } from "../utilities/hostingSpecials.js";
 
 const router = express.Router();
+
+const isCorporate = (source = "") => String(source).startsWith("corporate");
 
 router.post("/", async (req, res) => {
   try {
@@ -24,10 +27,17 @@ router.post("/", async (req, res) => {
     });
 
     await newSubscriber.save();
-    sendWelcomeEmail(newSubscriber); // welcome + $5 off for first-timers; never blocks the signup
+    // Planners get $99 off a first hosted event; guests get $5 off a first ticket. Never blocks the signup.
+    if (isCorporate(newSubscriber.source)) sendPlannerWelcome(newSubscriber);
+    else sendWelcomeEmail(newSubscriber);
     return res.status(201).json({ message: "Successfully subscribed!" });
   } catch (error) {
     if (error.code === 11000) {
+      // Already on the guest list but signing up as a planner: still send the planner savings
+      if (isCorporate(req.body.source) && req.body.email) {
+        const existing = await Subscriber.findOne({ email: String(req.body.email).trim().toLowerCase() }).catch(() => null);
+        if (existing && !existing.plannerCode) sendPlannerWelcome(existing);
+      }
       return res.status(400).json({ error: "This email address is already subscribed." });
     }
     return res.status(400).json({ error: error.message || "Error processing subscription." });

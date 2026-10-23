@@ -41,6 +41,8 @@ const subscriberSchema = new mongoose.Schema({
   source: { type: String, default: "", trim: true }, // where they signed up (footer, blog:slug)
   welcomeSentAt: { type: Date, default: null }, // newsletter welcome email (utilities/welcomeEmail.js)
   welcomeCode: { type: String, default: "" }, // code it carried, if any
+  plannerCode: { type: String, default: "", index: true }, // corporate signup: $99 off a first hosted event (utilities/hostingSpecials.js)
+  plannerSavingsUntil: { type: Date, default: null }, // book by this date
   createdAt: {
     type: Date,
     default: Date.now,
