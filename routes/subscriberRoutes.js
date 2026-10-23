@@ -1,5 +1,6 @@
 import express from "express";
 import Subscriber from "../models/subscriberSchema.js";
+import { sendWelcomeEmail } from "../utilities/welcomeEmail.js";
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ router.post("/", async (req, res) => {
     });
 
     await newSubscriber.save();
+    sendWelcomeEmail(newSubscriber); // welcome + $5 off for first-timers; never blocks the signup
     return res.status(201).json({ message: "Successfully subscribed!" });
   } catch (error) {
     if (error.code === 11000) {

@@ -39,6 +39,8 @@ const subscriberSchema = new mongoose.Schema({
   smsConsentText: { type: String, default: "" },
   smsConsentVersion: { type: String, default: "" },
   source: { type: String, default: "", trim: true }, // where they signed up (footer, blog:slug)
+  welcomeSentAt: { type: Date, default: null }, // newsletter welcome email (utilities/welcomeEmail.js)
+  welcomeCode: { type: String, default: "" }, // code it carried, if any
   createdAt: {
     type: Date,
     default: Date.now,

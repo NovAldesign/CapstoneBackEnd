@@ -22,6 +22,7 @@ const promoCodeSchema = new mongoose.Schema(
     collectEmail: { type: Boolean, default: false }, // the bag asks for the buyer's email
     maxUses: { type: Number, default: 0 }, // 0 = no limit (counts paid orders)
     eventsOnOrBefore: { type: String, default: null }, // "YYYY-MM-DD": only events on or before this date
+    noFood: { type: Boolean, default: false }, // doesn't work for food events
     notes: { type: String, default: "", trim: true },
   },
   { timestamps: true }
