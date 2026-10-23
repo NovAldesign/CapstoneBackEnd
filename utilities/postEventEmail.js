@@ -24,6 +24,7 @@ const TIME_ZONE = "America/New_York";
 const CODE_HOURS = 48;
 const GIVE_UP_DAYS = 3; // don't send for events that ended longer ago than this
 const HOUR = 60 * 60 * 1000;
+const REVIEW_URL = "https://g.page/r/CeZCCIN0CITtEBM/review"; // Google review form
 
 const PostEventEmail =
   mongoose.models.PostEventEmail ||
@@ -122,6 +123,7 @@ export const buildPostEventEmail = ({ name, pastEvent, nextEvent, plusOne, code,
   <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
     <p>Hi ${escapeHtml(firstName(name))},</p>
     <p>Thank you for coming out to <strong>${past}</strong>! Rooms like that only happen because people like you show up, and we loved having you there.</p>
+    <p style="background:#FAF7F0;border:1px solid #E5DCC8;padding:14px 16px;margin:18px 0;"><strong>How was your night?</strong> A quick Google review helps other grown folks find us.<br/><a href="${REVIEW_URL}" style="display:inline-block;margin-top:10px;background:#002147;color:#ffffff;padding:9px 18px;text-decoration:none;font-weight:bold;border-radius:4px;">Leave a Google review</a></p>
     ${friendBlock}
     ${aloneBlock}
     ${newFriend}
@@ -137,6 +139,8 @@ export const buildPostEventEmail = ({ name, pastEvent, nextEvent, plusOne, code,
     `Hi ${firstName(name)},`,
     "",
     `Thank you for coming out to ${pastEvent?.name || "our event"}! Rooms like that only happen because people like you show up, and we loved having you there.`,
+    "",
+    `How was your night? A quick Google review helps other grown folks find us: ${REVIEW_URL}`,
     ...(nextEvent
       ? [
           "",
