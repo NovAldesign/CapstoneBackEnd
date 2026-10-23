@@ -51,6 +51,7 @@ import partnerPortalRoutes from "./routes/partnerPortalRoutes.js";
 import { runPartnerReminders } from "./utilities/partnerPortal.js";
 import { deliverScheduledGifts } from "./utilities/giftCards.js";
 import { sendDueMemberOffers, grantDueJoinCredits } from "./utilities/memberOffer.js";
+import { seedArticles } from "./utilities/seedArticles.js";
 import { sendPostEventEmails } from "./utilities/postEventEmail.js";
 import { sendWinBackEmails } from "./utilities/winBackEmail.js";
 import { runReferrals } from "./utilities/referrals.js";
@@ -217,6 +218,9 @@ const startServer = async () => {
 
       // Group tickets ("Group of 5") saved before the fix counted as 1 person. Fix them once.
       repairGroupOrderGuests().catch((e) => console.error("Group order repair:", e.message));
+
+      // Blog posts written outside the dashboard (added once, never overwritten)
+      seedArticles().catch((e) => console.error("Blog posts:", e.message));
 
       // Email gifts that were scheduled for a later date (checks every 10 minutes)
       const runGifts = () => deliverScheduledGifts().catch((e) => console.error("Scheduled gifts:", e.message));
