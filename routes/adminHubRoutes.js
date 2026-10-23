@@ -480,7 +480,7 @@ const shapeCode = (p, usage, { builtIn = false } = {}) => {
 
 router.get("/codes", async (req, res) => {
   try {
-    const [saved, usage] = await Promise.all([PromoCode.find().sort({ createdAt: -1 }).lean(), codeUsage()]);
+    const [saved, usage] = await Promise.all([PromoCode.find({ source: { $nin: ["thankyou", "winback", "referral", "reward", "addon"] } }).sort({ createdAt: -1 }).lean(), codeUsage()]);
     const savedNames = new Set(saved.map((p) => normalizeCode(p.code)));
     const builtIn = PROMO_CODES.filter((p) => !savedNames.has(normalizeCode(p.code)));
     res.json({

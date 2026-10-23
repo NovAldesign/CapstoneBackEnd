@@ -1,5 +1,7 @@
 import { mailer } from "./mailer.js";
+import { shopStripHtml } from "./shopStrip.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
+import { queueMemberOffer } from "./memberOffer.js";
 import Event from "../models/eventSchema.js";
 import { lineGuests, guestsPerTicket } from "./plusOne.js";
 
@@ -97,7 +99,7 @@ export const claimTicketOrder = async (session) => {
       buyerName: details.name || "",
       buyerEmail: details.email || session.customer_email || "",
       buyerPhone: details.phone || "",
-      totalPaidCents: session.amount_total || 0,
+      totalPaidCents: Math.max(0, (session.amount_total || 0) - (Number(session.metadata?.giftAddCents) || 0)), // a gift card bought alongside isn't ticket money
       discountLabel: [
         Number(session.metadata?.memberSavingsCents) > 0
           ? `${session.metadata.memberTier === "Founding" ? "Founding" : "Member"} pricing ($${(Number(session.metadata.memberSavingsCents) / 100).toFixed(2)})`
@@ -148,7 +150,9 @@ export const completeTicketOrder = async (order, purchasedCart = []) => {
     };
   });
   await order.save();
-  return sendOrderEmails(order, { team: true });
+  const sent = await sendOrderEmails(order, { team: true });
+  queueMemberOffer(order); // "become a member" email the next morning for 4+ event guests
+  return sent;
 };
 
 /* -------------------------------------------------------
@@ -244,7 +248,12 @@ export const sendOrderEmails = async (order, { team = false, to = "" } = {}) => 
           <p style="font-size:14px;line-height:1.6;color:#444;margin:0 0 20px;">
             Questions or changes? Just reply to this email.
           </p>
+          <p style="font-size:14px;line-height:1.6;color:#444;margin:0 0 20px;">
+            <strong>Know someone who'd love a night like this?</strong> Gift them a ticket with a
+            <a href="${SITE_URL}/gift" style="color:#9A7630;font-weight:bold;">GFC gift card</a>, delivered on the day you choose.
+          </p>
           <p style="font-size:15px;color:#002147;margin:0;">See you soon,<br/><strong>Grown Folks Collective</strong></p>
+          ${shopStripHtml()}
         </div>
       </div>
     </div>`;

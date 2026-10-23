@@ -13,7 +13,8 @@ const promoCodeSchema = new mongoose.Schema(
     eventIds: [{ type: String, trim: true }], // exact event IDs
     active: { type: Boolean, default: true },
     expires: { type: String, default: null }, // "YYYY-MM-DD" (last day it works)
-    source: { type: String, enum: ["artist", "manual"], default: "manual" },
+    expiresAt: { type: Date, default: null }, // exact moment it stops working (e.g. 48-hour thank-you codes)
+    source: { type: String, enum: ["artist", "manual", "thankyou", "winback", "referral", "reward", "addon"], default: "manual" }, // addon = 15-minute "add another event" code from the thank-you page. // thankyou = day-after email, winback = "we miss you", referral = a guest's share code, reward = free ticket earned by referrals
     artistId: { type: String, default: "" },
 
     // Rules (same meaning as in utilities/promoCodes.js)
@@ -22,7 +23,12 @@ const promoCodeSchema = new mongoose.Schema(
     collectEmail: { type: Boolean, default: false }, // the bag asks for the buyer's email
     maxUses: { type: Number, default: 0 }, // 0 = no limit (counts paid orders)
     eventsOnOrBefore: { type: String, default: null }, // "YYYY-MM-DD": only events on or before this date
+    noFood: { type: Boolean, default: false }, // doesn't work for food events
+    noBundle: { type: Boolean, default: false }, // no multi-event bundle discount with it
+    returningOnly: { type: Boolean, default: false }, // only for emails that HAVE bought before
+    oncePerEmail: { type: Boolean, default: false }, // one paid order per email
     notes: { type: String, default: "", trim: true },
+    referrerEmail: { type: String, default: "", lowercase: true, trim: true }, // referral codes: whose code it is
   },
   { timestamps: true }
 );

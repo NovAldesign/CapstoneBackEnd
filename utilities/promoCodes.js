@@ -1,6 +1,7 @@
 import PromoCode from "../models/promoCodeSchema.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import Order from "../models/orderSchema.js";
+import { isFoodEvent } from "./memberCredit.js";
 
 // =======================================================
 // GFC TICKET CODES
@@ -21,6 +22,10 @@ import Order from "../models/orderSchema.js";
 //   collectEmail:  true = the bag asks for the buyer's email (needed for free tickets)
 //   maxUses:       how many paid/free orders can use the code in total (e.g. 2)
 //   eventsOnOrBefore: "YYYY-MM-DD" = only works for events on or before this date
+//   noFood:        true = doesn't work for food events (dinners, brunches, cookouts, Friendsgiving)
+//   noBundle:      true = no multi-event bundle discount in the same order
+//   returningOnly: true = only works for an email that HAS bought a GFC ticket before
+//   oncePerEmail:  true = each email can use the code on one paid order
 // =======================================================
 
 export const PROMO_CODES = [
@@ -35,8 +40,11 @@ export const PROMO_CODES = [
   // In-the-room QR code: $5 off every ticket, today only (Game Night, Oct 10)
   { code: "ROOM1010", label: "In the room: Game Night Oct 10 QR, $5 off", type: "amount", value: 5, events: [], active: true, expires: "2026-10-10" },
 
-  // Welcome email: $5 off one ticket to Game Night Oct 10, first-time buyers only
-  { code: "WELCOME5", label: "Welcome email: $5 off Game Night Oct 10", type: "amount", value: 5, events: ["spades"], active: true, expires: "2026-10-10", oncePerOrder: true, firstTimeOnly: true, eventsOnOrBefore: "2026-10-10" },
+  // Newsletter welcome email: $5 off one ticket, first-time buyers only, any event without food
+  { code: "WELCOME5", label: "Newsletter welcome: $5 off first ticket", type: "amount", value: 5, events: [], active: true, expires: null, oncePerOrder: true, firstTimeOnly: true, noFood: true, noBundle: true },
+
+  // Newsletter welcome for past buyers: 10% off one whole order, once per email, any event without food
+  { code: "WELCOMEBACK10", label: "Newsletter welcome back: 10% off one order", type: "percent", value: 10, events: [], active: true, expires: null, returningOnly: true, oncePerEmail: true, noFood: true, noBundle: true },
 
   // Oct 30 showcase artists (tracking only, $15 per ticket sold, up to $75)
   { code: "ARIA", label: "Artist: Aria Alicia, Oct 30 showcase", type: "tracking", value: 0, events: ["acoustic"], active: true, expires: "2026-10-30" },
@@ -47,6 +55,7 @@ export const normalizeCode = (code = "") =>
 
 export const isLive = (promo) => {
   if (!promo || !promo.active) return false;
+  if (promo.expiresAt && new Date() > new Date(promo.expiresAt)) return false;
   if (promo.expires) {
     const lastDay = new Date(`${promo.expires}T23:59:59-05:00`);
     if (new Date() > lastDay) return false;
@@ -73,6 +82,7 @@ export const findPromoCode = async (code) => {
 // Does this code work for this event?
 export const promoAppliesToEvent = (promo, event) => {
   if (!promo) return false;
+  if (promo.noFood && isFoodEvent(event?.name || event?.title || "")) return false;
   if (promo.eventsOnOrBefore && event?.date) {
     const lastDay = new Date(`${promo.eventsOnOrBefore}T23:59:59-05:00`);
     if (new Date(event.date) > lastDay) return false;
@@ -112,7 +122,15 @@ export const promoUsesLeft = async (promo) => {
 };
 
 // Does the bag need the buyer's email for this code?
-export const promoNeedsEmail = (promo) => Boolean(promo?.firstTimeOnly || promo?.collectEmail);
+export const promoNeedsEmail = (promo) =>
+  Boolean(promo?.firstTimeOnly || promo?.collectEmail || promo?.returningOnly || promo?.oncePerEmail);
+
+// Has this email already used this code on a paid order?
+export const usedCodeBefore = async (promo, email = "") => {
+  const clean = String(email).trim().toLowerCase();
+  if (!promo || !clean) return false;
+  return Boolean(await TicketOrder.exists({ buyerEmail: clean, promoCode: normalizeCode(promo.code), status: "paid" }));
+};
 
 // Has this email bought a GFC ticket before? (website orders, old and new)
 export const hasBoughtBefore = async (email = "") => {
@@ -129,6 +147,7 @@ export const hasBoughtBefore = async (email = "") => {
 export const describePromo = (promo) => {
   if (!promo) return "";
   if (promo.type === "percent" && Number(promo.value) >= 100 && promo.oncePerOrder) return "1 free ticket";
+  if (promo.type === "percent" && promo.returningOnly) return `${promo.value}% off your order, welcome back`;
   if (promo.type === "percent") return promo.oncePerOrder ? `${promo.value}% off one ticket` : `${promo.value}% off`;
   if (promo.type === "amount") {
     if (promo.firstTimeOnly) return `$${promo.value} off your first GFC event`;

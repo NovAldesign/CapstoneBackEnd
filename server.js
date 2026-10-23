@@ -49,6 +49,11 @@ import { runCreditUpkeep } from "./utilities/memberCredit.js";
 import partnerPortalRoutes from "./routes/partnerPortalRoutes.js";
 import { runPartnerReminders } from "./utilities/partnerPortal.js";
 import { deliverScheduledGifts } from "./utilities/giftCards.js";
+import { sendDueMemberOffers } from "./utilities/memberOffer.js";
+import { sendPostEventEmails } from "./utilities/postEventEmail.js";
+import { sendWinBackEmails } from "./utilities/winBackEmail.js";
+import { runReferrals } from "./utilities/referrals.js";
+import { sendEventReminders } from "./utilities/reminderEmail.js";
 
 const app  = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -220,6 +225,31 @@ const startServer = async () => {
       const runCredit = () => runCreditUpkeep().catch((e) => console.error("Member credit upkeep:", e.message));
       runCredit();
       setInterval(runCredit, 6 * 60 * 60 * 1000);
+
+      // "Become a member" offers: sent the morning after a 4th-event purchase (checks every 15 minutes)
+      const runOffers = () => sendDueMemberOffers().catch((e) => console.error("Member offers:", e.message));
+      setTimeout(runOffers, 2 * 60 * 1000);
+      setInterval(runOffers, 15 * 60 * 1000);
+
+      // Day-after "thank you for coming" emails, 10 AM Eastern the morning after each event (checks every 15 minutes)
+      const runThanks = () => sendPostEventEmails().catch((e) => console.error("Day-after emails:", e.message));
+      setTimeout(runThanks, 3 * 60 * 1000);
+      setInterval(runThanks, 15 * 60 * 1000);
+
+      // "We miss you" emails for guests away 30+ days, sent 10 AM to 6 PM Eastern (checks every hour)
+      const runWinBack = () => sendWinBackEmails().catch((e) => console.error("We miss you emails:", e.message));
+      setTimeout(runWinBack, 4 * 60 * 1000);
+      setInterval(runWinBack, 60 * 60 * 1000);
+
+      // Referrals: count friends whose event has happened; progress and free-ticket emails (checks every hour)
+      const runRefs = () => runReferrals().catch((e) => console.error("Referrals:", e.message));
+      setTimeout(runRefs, 6 * 60 * 1000);
+      setInterval(runRefs, 60 * 60 * 1000);
+
+      // Day-before "See you tomorrow!" reminders, from 10 AM Eastern the day before (checks every 15 minutes)
+      const runReminders = () => sendEventReminders().catch((e) => console.error("Event reminders:", e.message));
+      setTimeout(runReminders, 7 * 60 * 1000);
+      setInterval(runReminders, 15 * 60 * 1000);
 
       // Partner portal: reminder emails for missing items (checks every 6 hours, sends every 4 days at most)
       const runPartners = () => runPartnerReminders().catch((e) => console.error("Partner reminders:", e.message));
