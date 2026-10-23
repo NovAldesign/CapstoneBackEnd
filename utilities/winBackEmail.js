@@ -5,13 +5,15 @@ import mongoose from "mongoose";
 import { mailer } from "./mailer.js";
 import Event from "../models/eventSchema.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
+import GuestEntry from "../models/guestEntrySchema.js";
 import PromoCode from "../models/promoCodeSchema.js";
 import Membership from "../models/membershipSchema.js";
 import { isFoodEvent } from "./memberCredit.js";
 
 // -------------------------------------------------------
 // "We miss you" email
-// Who:   a past guest whose last GFC event was 30+ days ago, who has no ticket for an
+// Who:   a past guest (website ticket or guest list: Posh, Eventnoire, Meetup, door)
+//        whose last GFC event was 30+ days ago, who has no ticket for an
 //        upcoming event and isn't an active or paused member
 // What:  their own code for 15% off one ticket, good for 7 days, any event without food
 // When:  between 10 AM and 6 PM Eastern; once per absence (never twice for the
@@ -120,27 +122,46 @@ export const buildWinBackEmail = ({ name, lastEventName, events, code, expiresAt
   return { subject: `We miss you, ${firstName(name)}`, html, text };
 };
 
-// Each past guest's most recent event, and whether they hold a ticket for an upcoming one
+// Each past guest's most recent event, from website tickets AND the guest lists
+// (tickets sold on Posh, Eventnoire, Meetup, AllEvents, comps and walk-ins at the door).
+// A guest with a ticket for an upcoming event has a later "last event", so is left out.
+const GUEST_LIST_SOURCES = ["posh", "eventnoire", "meetup", "allevents", "door", "comp", "other"]; // not scouts or partners
+const isObjectId = (id) => /^[a-f0-9]{24}$/i.test(String(id || ""));
+
 const guestsAway = async (now) => {
-  const rows = await TicketOrder.aggregate([
-    { $match: { status: "paid", buyerEmail: { $nin: ["", null] } } },
-    { $unwind: "$items" },
-    { $sort: { "items.eventDate": -1 } },
-    {
-      $group: {
-        _id: "$buyerEmail",
-        name: { $first: "$buyerName" },
-        lastEventDate: { $max: "$items.eventDate" },
-        lastEventName: { $first: "$items.eventName" },
-      },
-    },
-    {
-      $match: {
-        lastEventDate: { $lte: new Date(now.getTime() - AWAY_DAYS * DAY), $gte: new Date(now.getTime() - LOOKBACK_DAYS * DAY) },
-      },
-    },
-  ]);
-  return rows; // a guest with a ticket for an upcoming event has a later lastEventDate, so is left out
+  const latest = new Map(); // email -> { name, lastEventDate, lastEventName }
+  const note = (email, name, date, eventName) => {
+    const key = String(email || "").trim().toLowerCase();
+    if (!key || !date) return;
+    const d = new Date(date);
+    const cur = latest.get(key);
+    if (!cur || d > cur.lastEventDate) latest.set(key, { name: name || cur?.name || "", lastEventDate: d, lastEventName: eventName || "" });
+    else if (!cur.name && name) cur.name = name;
+  };
+
+  const orders = await TicketOrder.find({ status: "paid", buyerEmail: { $nin: ["", null] } })
+    .select("buyerEmail buyerName items.eventDate items.eventName")
+    .lean();
+  for (const o of orders) for (const i of o.items || []) note(o.buyerEmail, o.buyerName, i.eventDate, i.eventName);
+
+  const entries = await GuestEntry.find({ email: { $nin: ["", null] }, source: { $in: GUEST_LIST_SOURCES } })
+    .select("email name eventId")
+    .lean();
+  const ids = [...new Set(entries.map((e) => e.eventId).filter(isObjectId))];
+  const events = new Map(
+    (await Event.find({ _id: { $in: ids } }).select("name date").lean()).map((e) => [String(e._id), e])
+  );
+  for (const g of entries) {
+    const ev = events.get(String(g.eventId));
+    if (ev) note(g.email, g.name, ev.date, ev.name);
+  }
+
+  const awayBefore = new Date(now.getTime() - AWAY_DAYS * DAY);
+  const lookback = new Date(now.getTime() - LOOKBACK_DAYS * DAY);
+  return [...latest.entries()]
+    .filter(([, v]) => v.lastEventDate <= awayBefore && v.lastEventDate >= lookback)
+    .map(([email, v]) => ({ _id: email, name: v.name, lastEventDate: v.lastEventDate, lastEventName: v.lastEventName }))
+    .sort((a, b) => b.lastEventDate - a.lastEventDate);
 };
 
 // Runs on a timer (server.js). Never throws.
