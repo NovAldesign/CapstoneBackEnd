@@ -1,4 +1,5 @@
 import express from "express";
+import LinkClick from "../models/linkClickSchema.js";
 import crypto from "crypto";
 import mongoose from "mongoose";
 import ArtistApplication from "../models/artistApplicationSchema.js";
@@ -891,6 +892,24 @@ const mapLimit = async (items, limit, fn) => {
   await Promise.all(workers);
   return out;
 };
+
+// Clicks on /go short links in a date range (e.g. how many times the pitch deck link was opened)
+router.get("/link-clicks", async (req, res) => {
+  try {
+    const from = YMD_RE.test(req.query.from || "") ? req.query.from : new Date(Date.now() - 30 * DAY).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const to = YMD_RE.test(req.query.to || "") ? req.query.to : new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const rows = await LinkClick.aggregate([
+      { $match: { day: { $gte: from, $lte: to } } },
+      { $group: { _id: { code: "$code", src: "$src" }, clicks: { $sum: "$count" }, lastAt: { $max: "$lastAt" } } },
+      { $sort: { clicks: -1 } },
+      { $limit: 100 },
+    ]);
+    res.json({ from, to, links: rows.map((r) => ({ code: r._id.code, src: r._id.src, clicks: r.clicks, lastAt: r.lastAt })) });
+  } catch (err) {
+    console.error("Link clicks error:", err.message);
+    res.status(500).json({ error: "Couldn't load link clicks." });
+  }
+});
 
 router.get("/reports", async (req, res) => {
   try {
