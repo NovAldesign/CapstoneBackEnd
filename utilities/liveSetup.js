@@ -206,6 +206,50 @@ export const sendLiveConfirmation = async (application, event, { updated = false
   return true;
 };
 
+// Invite to the artist: their private link, the date choices, the platform and the questions (a copy goes to the team)
+export const sendLiveInvite = async (application, event) => {
+  if (!resend) return false;
+  const live = application.live;
+  const first = escapeHtml(firstWord(application.artistName || application.firstName));
+  const platform = PLATFORMS[live.platform] || "TikTok";
+  const h3 = (t) =>
+    `<h3 style="color:#002147;border-bottom:2px solid #C5A059;padding-bottom:4px;margin:26px 0 8px;">${t}</h3>`;
+  const options = (live.options || []).map((d) => `<li>${escapeHtml(fmtLiveWhen(d))}</li>`).join("");
+  const questions = (live.questions || []).map((q) => `<li style="margin:0 0 8px;">${escapeHtml(q)}</li>`).join("");
+
+  await resend.emails.sendOrThrow({
+    from: "Grown Folks Collective <noreply@grownfolkscollective.com>",
+    to: application.email,
+    bcc: TEAM_EMAIL,
+    reply_to: TEAM_EMAIL,
+    subject: `Let's go Live on ${platform}: pick your date`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
+        <p>Hi ${first},</p>
+        <p>We'd love to go Live with you on <strong>${platform}</strong> so our community can meet you before
+          ${event ? `<strong>${escapeHtml(event.name)}</strong>` : "the show"}. It takes about ${LIVE_MINUTES} minutes.</p>
+
+        <p style="margin:22px 0;"><a href="${liveLink(application)}" style="display:inline-block;background:#002147;color:#ffffff;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:4px;">Pick your Live date</a></p>
+
+        ${options ? `${h3("Date choices")}<ul>${options}</ul><p style="margin:0;">None of these work? Choose "None of these work" on the page and tell us what does.</p>` : ""}
+
+        ${h3("Before the Live")}
+        <ul>
+          <li>Follow ${live.platform === "facebook" ? "the Grown Folks Collective Page on Facebook" : `${GFC_HANDLE} on ${platform}`} so we can invite you in.</li>
+          <li>Add your ${platform} ${live.platform === "facebook" ? "name" : "handle"} on the page when you pick your date.</li>
+        </ul>
+
+        ${questions ? `${h3("What we'll talk about")}<ol>${questions}</ol><p style="margin:0;">You can add notes to any question on the page.</p>` : ""}
+
+        <p>Once you pick a date, you'll get a confirmation with everything you need.</p>
+        <p>Vaughn<br/>Chief Playmaker<br/>Grown Folks™ Collective</p>
+        <p><img src="${LOGO}" width="90" alt="Grown Folks Collective" style="display:block;width:90px;border-radius:50%;"></p>
+        <p style="color:#9A7630;font-style:italic;margin-top:4px;">Where grown folks come out to play.™</p>
+      </div>`,
+  });
+  return true;
+};
+
 // Heads-up to the team when someone says none of the dates work
 export const sendNeedsDateNotice = async (application) => {
   if (!resend) return false;

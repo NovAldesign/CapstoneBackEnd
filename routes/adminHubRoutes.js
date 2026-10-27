@@ -26,7 +26,7 @@ import GuestEntry, { GUEST_SOURCES } from "../models/guestEntrySchema.js";
 import { buildGuestList, setCheckIn, doorKey, clearEventbriteCache } from "../utilities/guestList.js";
 import {
   PLATFORMS, MAX_OPTIONS, MAX_QUESTIONS, TIME_ZONE,
-  newLiveToken, liveLink, parseEtLocal, toEtLocal, fmtLiveWhen, defaultQuestions, sendLiveConfirmation,
+  newLiveToken, liveLink, parseEtLocal, toEtLocal, fmtLiveWhen, defaultQuestions, sendLiveConfirmation, sendLiveInvite,
 } from "../utilities/liveSetup.js";
 import { socialHandle } from "./artistRoutes.js";
 
@@ -1189,6 +1189,8 @@ const livePerson = (a, event) => {
       invitedAt: live.invitedAt,
       confirmedAt: live.confirmedAt,
       confirmationSentAt: live.confirmationSentAt,
+      inviteSentAt: live.inviteSentAt,
+      completedAt: live.completedAt || null,
     },
     defaultQuestions: defaultQuestions(a, event),
   };
@@ -1198,7 +1200,7 @@ const livePerson = (a, event) => {
 const livesToday = async () => {
   const start = new Date(Date.now() - 18 * 60 * 60 * 1000);
   const end = new Date(Date.now() + 30 * 60 * 60 * 1000);
-  const apps = await ArtistApplication.find({ "live.status": "confirmed", "live.date": { $gte: start, $lte: end } }).lean();
+  const apps = await ArtistApplication.find({ "live.status": "confirmed", "live.completedAt": null, "live.date": { $gte: start, $lte: end } }).lean();
   const ids = apps.map((a) => a.eventId).filter(isId);
   const events = new Map((await Event.find({ _id: { $in: ids } }).select("name date").lean()).map((e) => [String(e._id), e]));
   return apps
@@ -1215,7 +1217,7 @@ router.get("/lives", async (req, res) => {
     const byId = new Map(events.map((e) => [String(e._id), e]));
     const apps = await ArtistApplication.find({
       status: "approved",
-      $or: [{ eventId: { $in: [...byId.keys()] } }, { "live.date": { $gte: since } }],
+      $or: [{ eventId: { $in: [...byId.keys()] } }, { "live.date": { $gte: since } }, { "live.completedAt": { $gte: new Date(Date.now() - 120 * DAY) } }],
     }).lean();
     const allIds = apps.map((a) => a.eventId).filter((id) => isId(id) && !byId.has(String(id)));
     if (allIds.length) (await Event.find({ _id: { $in: allIds } }).select("name date").lean()).forEach((e) => byId.set(String(e._id), e));
@@ -1272,8 +1274,22 @@ router.post("/lives/:id", async (req, res) => {
     }
 
     if (!live.token) live.token = newLiveToken();
+    const isNew = !live.status;
     if (!live.status) { live.status = "invited"; live.invitedAt = new Date(); }
+    // New Lives email the artist their link automatically; edits only when you tick "Email them their link"
+    const sendInvite = live.status === "invited" && !b.date && (b.sendInvite === true || (isNew && b.sendInvite !== false));
     await application.save();
+
+    let inviteSent = false;
+    if (sendInvite) {
+      const ev = isId(application.eventId) ? await Event.findById(application.eventId).select("name date").lean() : null;
+      try {
+        inviteSent = await sendLiveInvite(application, ev);
+        if (inviteSent) { live.inviteSentAt = new Date(); await application.save(); }
+      } catch (e) {
+        console.error("Admin live invite email error:", e.message);
+      }
+    }
 
     let emailSent = false;
     if (sendEmail) {
@@ -1286,10 +1302,25 @@ router.post("/lives/:id", async (req, res) => {
       }
     }
     const event = isId(application.eventId) ? await Event.findById(application.eventId).select("name date").lean() : null;
-    res.json({ ok: true, emailSent, person: livePerson(application.toObject(), event) });
+    res.json({ ok: true, emailSent, inviteSent, person: livePerson(application.toObject(), event) });
   } catch (err) {
     console.error("Admin live save error:", err.message);
     res.status(500).json({ error: "Couldn't save the Live. Please try again." });
+  }
+});
+
+// Check a Live off as done (it moves to Archived), or undo that
+router.post("/lives/:id/done", async (req, res) => {
+  try {
+    const application = await findApplication(req.params.id);
+    if (!application?.live?.status) return res.status(404).json({ error: "Live not found." });
+    application.live.completedAt = req.body?.done === false ? null : new Date();
+    await application.save();
+    const event = isId(application.eventId) ? await Event.findById(application.eventId).select("name date").lean() : null;
+    res.json({ ok: true, person: livePerson(application.toObject(), event) });
+  } catch (err) {
+    console.error("Admin live done error:", err.message);
+    res.status(500).json({ error: "Couldn't update it. Please try again." });
   }
 });
 

@@ -85,7 +85,7 @@ const artistApplicationSchema = new mongoose.Schema(
       questions: [{ type: String, trim: true }], // what we'll ask on the Live
       notes: [{ type: String, trim: true }], // their optional talking points, one per question
       date: { type: Date, default: null },
-      platform: { type: String, enum: ["", "instagram", "tiktok"], default: "" },
+      platform: { type: String, enum: ["", "instagram", "tiktok", "facebook"], default: "" },
       handle: { type: String, default: "", trim: true },
       phone: { type: String, default: "", trim: true },
       plug: { type: String, default: "", trim: true }, // what they want to promote
@@ -94,6 +94,8 @@ const artistApplicationSchema = new mongoose.Schema(
       invitedAt: { type: Date, default: null },
       confirmedAt: { type: Date, default: null },
       confirmationSentAt: { type: Date, default: null },
+      inviteSentAt: { type: Date, default: null }, // when we emailed them their Live link
+      completedAt: { type: Date, default: null }, // you checked "Done": it moves to Archived
     },
   },
   { timestamps: true }
