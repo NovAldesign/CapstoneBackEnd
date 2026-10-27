@@ -95,7 +95,7 @@ const clientIp = (req) => String(req.headers["x-forwarded-for"] || req.ip || "")
 export const socialHandle = (value) =>
   String(value || "")
     .trim()
-    .replace(/^https?:\/\/(www\.)?(instagram|tiktok)\.com\/@?/i, "")
+    .replace(/^https?:\/\/(www\.|m\.)?(instagram|tiktok|facebook)\.com\/@?/i, "")
     .replace(/^@/, "")
     .split(/[/?#\s]/)[0]
     .slice(0, 60);

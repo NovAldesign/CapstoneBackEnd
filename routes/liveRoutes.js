@@ -77,8 +77,8 @@ router.post("/:id", async (req, res) => {
     const live = application.live;
     const b = req.body || {};
 
-    // All Lives are on TikTok now (Instagram Lives are no longer offered)
-    const platform = "tiktok";
+    // The platform you picked when setting the Live up (TikTok if none)
+    const platform = PLATFORMS[live.platform] ? live.platform : "tiktok";
     const handle = socialHandle(b.handle);
     if (!handle) return res.status(400).json({ error: `Add your ${PLATFORMS[platform]} handle so we can invite you.` });
 

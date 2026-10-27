@@ -15,7 +15,10 @@ export const TIME_ZONE = "America/New_York";
 export const LIVE_MINUTES = 20;
 export const MAX_OPTIONS = 4;
 export const MAX_QUESTIONS = 12;
-export const PLATFORMS = { instagram: "Instagram", tiktok: "TikTok" };
+export const PLATFORMS = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
+// Where to find GFC on each platform, and how a guest's handle is shown
+const whereOn = (platform) => (platform === "facebook" ? "the Grown Folks Collective Facebook Page" : GFC_HANDLE);
+const showHandle = (platform, handle) => (platform === "facebook" ? handle : `@${handle}`);
 const GFC_HANDLE = "@grownfolkscollective";
 const LOGO = "https://www.grownfolkscollective.com/email/gfc-logo.png";
 
@@ -119,13 +122,19 @@ const calendarLink = (application, date) => {
     action: "TEMPLATE",
     text: `Grown Folks Collective ${platform} Live`,
     dates: `${stamp(start)}/${stamp(end)}`,
-    details: `Join the ${GFC_HANDLE} ${platform} Live a few minutes after it starts and Vaughn will invite you in.`,
+    details: `Join the ${whereOn(application.live.platform)} ${platform} Live a few minutes after it starts and Vaughn will invite you in.`,
   });
   return `https://calendar.google.com/calendar/render?${params}`;
 };
 
 const joinSteps = (platform) =>
-  platform === "tiktok"
+  platform === "facebook"
+    ? [
+        "Follow the Grown Folks Collective Page on Facebook if you haven't yet.",
+        "Open Facebook a few minutes before start time. When our Live starts, tap in and watch it.",
+        `Vaughn will send you an invite to join the Live on camera. Tap <strong>Join</strong> and you're on.`,
+      ]
+    : platform === "tiktok"
     ? [
         `Follow ${GFC_HANDLE} on TikTok if you haven't yet.`,
         "Open TikTok a few minutes before start time. When our Live starts, tap in and watch it.",
@@ -170,8 +179,8 @@ export const sendLiveConfirmation = async (application, event, { updated = false
         ${h3("Your Live")}
         <ul>
           <li><strong>When:</strong> ${escapeHtml(fmtLiveWhen(live.date))} (about ${LIVE_MINUTES} minutes)</li>
-          <li><strong>Where:</strong> ${platform}, on ${GFC_HANDLE}</li>
-          ${live.handle ? `<li><strong>Your ${platform}:</strong> @${escapeHtml(live.handle)}</li>` : ""}
+          <li><strong>Where:</strong> ${platform}, on ${whereOn(live.platform)}</li>
+          ${live.handle ? `<li><strong>Your ${platform}:</strong> ${escapeHtml(showHandle(live.platform, live.handle))}</li>` : ""}
         </ul>
         <p style="margin:0 0 10px;"><a href="${calendarLink(application, live.date)}" style="color:#9A7630;">Add it to your calendar</a></p>
 

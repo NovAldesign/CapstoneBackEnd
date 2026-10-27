@@ -1220,6 +1220,10 @@ router.post("/lives/:id", async (req, res) => {
     const b = req.body || {};
     const live = application.live;
     const now = Date.now();
+    // TikTok, Instagram or Facebook. You choose it when you set the Live up; the artist's page and emails follow it.
+    if (PLATFORMS[b.platform]) live.platform = b.platform;
+    else if (!live.platform) live.platform = "tiktok";
+    if (typeof b.handle === "string" && b.handle.trim()) live.handle = socialHandle(b.handle);
 
     if (Array.isArray(b.options)) {
       const options = b.options.map(parseEtLocal).filter((d) => d && d.getTime() > now).slice(0, MAX_OPTIONS);
@@ -1240,9 +1244,6 @@ router.post("/lives/:id", async (req, res) => {
     if (b.date) {
       const date = parseEtLocal(b.date);
       if (!date) return res.status(400).json({ error: "That date doesn't look right." });
-      // All Lives are on TikTok now
-      live.platform = "tiktok";
-      if (typeof b.handle === "string") live.handle = socialHandle(b.handle);
       const changed = !live.date || new Date(live.date).getTime() !== date.getTime();
       live.date = date;
       live.status = "confirmed";
