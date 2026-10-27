@@ -96,6 +96,8 @@ const artistApplicationSchema = new mongoose.Schema(
       confirmationSentAt: { type: Date, default: null },
       inviteSentAt: { type: Date, default: null }, // when we emailed them their Live link
       completedAt: { type: Date, default: null }, // you checked "Done": it moves to Archived
+      artistChose: { type: Boolean, default: false }, // you entered a time the artist gave you; the email asks them to approve it
+      approvedAt: { type: Date, default: null }, // they tapped "Yes, this time works"
     },
   },
   { timestamps: true }

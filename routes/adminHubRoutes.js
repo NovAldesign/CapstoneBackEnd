@@ -1191,6 +1191,8 @@ const livePerson = (a, event) => {
       confirmationSentAt: live.confirmationSentAt,
       inviteSentAt: live.inviteSentAt,
       completedAt: live.completedAt || null,
+      artistChose: Boolean(live.artistChose),
+      approvedAt: live.approvedAt || null,
     },
     defaultQuestions: defaultQuestions(a, event),
   };
@@ -1266,6 +1268,9 @@ router.post("/lives/:id", async (req, res) => {
       const date = parseEtLocal(b.date);
       if (!date) return res.status(400).json({ error: "That date doesn't look right." });
       const changed = !live.date || new Date(live.date).getTime() !== date.getTime();
+      // "The artist chose this time": their email asks them to approve it instead of just confirming
+      live.artistChose = b.artistChose === true;
+      if (changed || !live.artistChose) live.approvedAt = null;
       live.date = date;
       live.status = "confirmed";
       live.confirmedAt = live.confirmedAt || new Date();

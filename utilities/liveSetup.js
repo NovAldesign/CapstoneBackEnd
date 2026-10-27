@@ -147,6 +147,9 @@ const joinSteps = (platform) =>
       ];
 
 // Confirmation to the artist (a copy goes to the team inbox)
+export const approveLink = (application) =>
+  `${liveLink(application)}&approve=1`; // their Live page confirms the time when it opens
+
 export const sendLiveConfirmation = async (application, event, { updated = false } = {}) => {
   if (!resend) return false;
   const live = application.live;
@@ -169,12 +172,21 @@ export const sendLiveConfirmation = async (application, event, { updated = false
     to: application.email,
     bcc: TEAM_EMAIL,
     reply_to: TEAM_EMAIL,
-    subject: `${updated ? "Updated: " : ""}You're set for our ${platform} Live, ${fmtShortDay(live.date)}`,
+    subject: live.artistChose
+      ? `Please confirm your ${platform} Live time: ${fmtShortDay(live.date)}`
+      : `${updated ? "Updated: " : ""}You're set for our ${platform} Live, ${fmtShortDay(live.date)}`,
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
         <p>Hi ${first},</p>
+        ${live.artistChose ? `
+        <p>Thank you for sending your time! We're going Live together so our community can meet you before
+          ${event ? `<strong>${escapeHtml(event.name)}</strong>` : "the show"}. Here's what we have down:</p>
+        <p style="font-size:18px;font-weight:bold;color:#002147;margin:14px 0;">${escapeHtml(fmtLiveWhen(live.date))} on ${platform}</p>
+        <p style="margin:18px 0;"><a href="${approveLink(application)}" style="display:inline-block;background:#002147;color:#ffffff;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:4px;">Yes, this time works</a>
+          &nbsp; <a href="${calendarLink(application, live.date)}" style="display:inline-block;background:#C5A059;color:#002147;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:4px;">Add it to my calendar</a></p>
+        <p style="margin:0;">Need a different time? Just reply to this email.</p>` : `
         <p>${updated ? "Your Live details are updated." : "You're all set!"} We're going Live together so our community can meet you before
-          ${event ? `<strong>${escapeHtml(event.name)}</strong>` : "the show"}.</p>
+          ${event ? `<strong>${escapeHtml(event.name)}</strong>` : "the show"}.</p>`}
 
         ${h3("Your Live")}
         <ul>

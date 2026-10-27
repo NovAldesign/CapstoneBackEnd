@@ -54,6 +54,8 @@ const view = (application, event) => {
     },
     handles: { instagram: socialHandle(application.instagram), tiktok: socialHandle(application.tiktok) },
     past: Boolean(live.date && new Date(live.date).getTime() < now - 60 * 60 * 1000),
+    artistChose: Boolean(live.artistChose),
+    approved: Boolean(live.approvedAt),
   };
 };
 
@@ -65,6 +67,24 @@ router.get("/:id", async (req, res) => {
     res.json(view(application, await eventFor(application)));
   } catch (err) {
     console.error("Live setup load error:", err.message);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+/* POST /api/lives/:id/approve?t=TOKEN — they tapped "Yes, this time works" in their email */
+router.post("/:id/approve", async (req, res) => {
+  try {
+    const application = await findLive(req);
+    if (!application) return res.status(404).json({ error: "This Live link isn't valid. Reply to your email from Vaughn and we'll send a new one." });
+    const live = application.live;
+    if (live.status !== "confirmed" || !live.date) return res.status(400).json({ error: "There's no Live time to approve yet." });
+    if (!live.approvedAt) {
+      live.approvedAt = new Date();
+      await application.save();
+    }
+    res.json({ ok: true, approved: true, ...view(application, await eventFor(application)) });
+  } catch (err) {
+    console.error("Live approve error:", err.message);
     res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 });
@@ -95,6 +115,7 @@ router.post("/:id", async (req, res) => {
     }
 
     const wasConfirmed = live.status === "confirmed";
+    live.artistChose = false; // they picked it themselves on the page, so no approval needed
     const before = `${live.date ? new Date(live.date).getTime() : ""}|${live.platform}`;
     live.platform = platform;
     live.handle = handle;
