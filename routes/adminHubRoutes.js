@@ -1313,7 +1313,9 @@ router.post("/lives/:id", async (req, res) => {
 router.post("/lives/:id/done", async (req, res) => {
   try {
     const application = await findApplication(req.params.id);
-    if (!application?.live?.status) return res.status(404).json({ error: "Live not found." });
+    if (!application) return res.status(404).json({ error: "Not found." });
+    // Works for any booked artist, even one whose Live was done outside the dashboard (never set up here)
+    if (!application.live) application.live = {};
     application.live.completedAt = req.body?.done === false ? null : new Date();
     await application.save();
     const event = isId(application.eventId) ? await Event.findById(application.eventId).select("name date").lean() : null;
