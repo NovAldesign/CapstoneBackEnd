@@ -9,6 +9,7 @@ import { getAddonOffer } from '../utilities/addonOffer.js';
 import { isPlusOne, guestsPerTicket, plusOneMemberCents, plusOneAllowed, groupSize } from '../utilities/plusOne.js';
 import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail, usedCodeBefore } from '../utilities/promoCodes.js';
 import crypto from 'crypto';
+import { plan as ebFixPlan, apply as ebFixApply, DOOR_FAQ_Q, DOOR_FAQ_A } from '../utilities/ebTicketFixer.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 import { findUsableCard, cardCredit, redeemCard, looksLikeCard, createCardsFromSession, deliverNewCards } from '../utilities/giftCards.js';
 import { handleShopSession } from './shopRoutes.js';
@@ -1158,6 +1159,53 @@ router.post('/admin/sync-eventbrite', protect, restrictTo('admin'), async (req, 
   } catch (err) {
     console.error('Eventbrite manual sync error:', err.message);
     res.status(500).json({ error: "Couldn't sync from Eventbrite. Please try again." });
+  }
+});
+
+/* -------------------------------------------------------
+   Eventbrite ticket fixer (Admin)
+   GET  /api/events/admin/eb-tickets/plan   — read only, shows what would change
+   POST /api/events/admin/eb-tickets/apply  — makes the changes, syncs the site,
+        and fixes the door FAQ on the website's Acoustic & Infused events
+------------------------------------------------------- */
+router.get('/admin/eb-tickets/plan', protect, restrictTo('admin'), async (req, res) => {
+  const TOKEN = process.env.EVENTBRITE_PRIVATE_TOKEN;
+  if (!TOKEN) return res.status(500).json({ error: 'The Eventbrite token is missing in Railway (EVENTBRITE_PRIVATE_TOKEN).' });
+  try {
+    res.json({ events: await ebFixPlan(TOKEN), faq: { question: DOOR_FAQ_Q, answer: DOOR_FAQ_A } });
+  } catch (err) {
+    console.error('Eventbrite ticket plan error:', err.message);
+    res.status(500).json({ error: `Couldn't read Eventbrite: ${err.message}` });
+  }
+});
+
+router.post('/admin/eb-tickets/apply', protect, restrictTo('admin'), async (req, res) => {
+  const TOKEN = process.env.EVENTBRITE_PRIVATE_TOKEN;
+  if (!TOKEN) return res.status(500).json({ error: 'The Eventbrite token is missing in Railway (EVENTBRITE_PRIVATE_TOKEN).' });
+  try {
+    const events = await ebFixApply(TOKEN, (id) => syncEventbriteEvent(id, TOKEN));
+
+    // Website FAQ: swap the door answer on the Acoustic & Infused events
+    const faqFixed = [];
+    for (const row of events) {
+      if (!row.id || !/acoustic/i.test(row.label || '')) continue;
+      const dbEv = await Event.findOne({ eventbriteId: String(row.id) });
+      if (!dbEv) continue;
+      let hit = false;
+      for (const f of dbEv.faqs || []) {
+        if (/door/i.test(f.question || '') && f.answer !== DOOR_FAQ_A) {
+          f.question = DOOR_FAQ_Q;
+          f.answer = DOOR_FAQ_A;
+          hit = true;
+        }
+      }
+      if (hit) { await dbEv.save(); faqFixed.push(row.date); }
+      row.siteFaq = hit ? 'Door FAQ updated on the website.' : 'Website door FAQ already right (or not on this event).';
+    }
+    res.json({ events, faqFixed, faq: { question: DOOR_FAQ_Q, answer: DOOR_FAQ_A } });
+  } catch (err) {
+    console.error('Eventbrite ticket apply error:', err.message);
+    res.status(500).json({ error: `Couldn't finish the Eventbrite update: ${err.message}` });
   }
 });
 
