@@ -7,7 +7,7 @@ import Order from '../models/orderSchema.js';
 import { claimTicketOrder, completeTicketOrder } from '../utilities/ticketOrders.js';
 import { getAddonOffer } from '../utilities/addonOffer.js';
 import { isPlusOne, guestsPerTicket, plusOneMemberCents, plusOneAllowed, groupSize } from '../utilities/plusOne.js';
-import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail, usedCodeBefore } from '../utilities/promoCodes.js';
+import { findPromoCode, promoAppliesToEvent, applyPromoToCents, hasBoughtBefore, promoUsesLeft, promoNeedsEmail, usedCodeBefore, isWelcomeCode, welcomeWindow, welcomeDeadlineLabel } from '../utilities/promoCodes.js';
 import crypto from 'crypto';
 import { plan as ebFixPlan, apply as ebFixApply, DOOR_FAQ_Q, DOOR_FAQ_A } from '../utilities/ebTicketFixer.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
@@ -374,6 +374,15 @@ router.post('/checkout', async (req, res, next) => {
     }
     if (promo?.returningOnly && !(await hasBoughtBefore(cleanEmail))) {
       return res.status(400).json({ error: `${promo.code.toUpperCase()} is a thank-you for returning guests, and we don't see a past ticket for ${cleanEmail}. Use the email you bought with before, or remove the code to continue.` });
+    }
+    if (isWelcomeCode(promo)) {
+      const win = await welcomeWindow(cleanEmail);
+      if (win.notSubscribed) {
+        return res.status(400).json({ error: `${promo.code.toUpperCase()} is a Come Out & Play welcome code. Use the email you joined the newsletter with, or remove the code to continue.` });
+      }
+      if (!win.ok) {
+        return res.status(400).json({ error: `${promo.code.toUpperCase()} expired on ${welcomeDeadlineLabel(win.deadline)}. Remove the code to continue.` });
+      }
     }
     if (promo?.oncePerEmail && (await usedCodeBefore(promo, cleanEmail))) {
       return res.status(400).json({ error: `${promo.code.toUpperCase()} has already been used with ${cleanEmail}. Remove the code to continue.` });

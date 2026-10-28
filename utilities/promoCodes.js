@@ -2,6 +2,7 @@ import PromoCode from "../models/promoCodeSchema.js";
 import TicketOrder from "../models/ticketOrderSchema.js";
 import Order from "../models/orderSchema.js";
 import { isFoodEvent } from "./memberCredit.js";
+import Subscriber from "../models/subscriberSchema.js";
 
 // =======================================================
 // GFC TICKET CODES
@@ -124,6 +125,38 @@ export const promoUsesLeft = async (promo) => {
 // Does the bag need the buyer's email for this code?
 export const promoNeedsEmail = (promo) =>
   Boolean(promo?.firstTimeOnly || promo?.collectEmail || promo?.returningOnly || promo?.oncePerEmail);
+
+// ── Welcome codes expire 14 days after the welcome email ──
+// Each person's own window: from the day their welcome went out (or they joined), never before Oct 27, 2026
+// (so people who joined earlier get until Nov 10). Applies to WELCOME5 and WELCOMEBACK10,
+// even if they've been moved into the dashboard.
+export const WELCOME_CODES = ["WELCOME5", "WELCOMEBACK10"];
+export const WELCOME_DAYS = 14;
+const WELCOME_WINDOW_START = Date.parse("2026-10-27T12:00:00-04:00");
+export const isWelcomeCode = (promo) => Boolean(promo && WELCOME_CODES.includes(normalizeCode(promo.code)));
+
+// Last moment the code works: 11:59 PM Atlanta time on the 14th day
+export const welcomeDeadline = (startDate) => {
+  const start = Math.max(new Date(startDate || Date.now()).getTime(), WELCOME_WINDOW_START);
+  const day = new Date(start + WELCOME_DAYS * 24 * 60 * 60 * 1000)
+    .toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
+  const probe = new Date(`${day}T12:00:00Z`);
+  const offset = probe.toLocaleString("en-US", { timeZone: "America/New_York", timeZoneName: "shortOffset" }).match(/GMT([+-]\d+)/);
+  const hours = offset ? String(Math.abs(Number(offset[1]))).padStart(2, "0") : "05";
+  return new Date(`${day}T23:59:59-${hours}:00`);
+};
+
+export const welcomeDeadlineLabel = (deadline) =>
+  new Date(deadline).toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "long", month: "long", day: "numeric" });
+
+// { ok, deadline } for this email's welcome code
+export const welcomeWindow = async (email = "") => {
+  const clean = String(email).trim().toLowerCase();
+  const sub = clean ? await Subscriber.findOne({ email: clean }).select("welcomeSentAt createdAt").lean() : null;
+  if (!sub) return { ok: false, deadline: null, notSubscribed: true };
+  const deadline = welcomeDeadline(sub.welcomeSentAt || sub.createdAt);
+  return { ok: Date.now() <= deadline.getTime(), deadline };
+};
 
 // Has this email already used this code on a paid order?
 export const usedCodeBefore = async (promo, email = "") => {

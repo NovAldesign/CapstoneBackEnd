@@ -3,7 +3,7 @@ import { isOptedOut, asMarketing } from "./optOut.js";
 import { shopStripHtml, shopStripText } from "./shopStrip.js";
 import Event from "../models/eventSchema.js";
 import Subscriber from "../models/subscriberSchema.js";
-import { hasBoughtBefore } from "./promoCodes.js";
+import { hasBoughtBefore, welcomeDeadline, welcomeDeadlineLabel } from "./promoCodes.js";
 import { isFoodEvent } from "./memberCredit.js";
 
 // -------------------------------------------------------
@@ -51,7 +51,8 @@ const nextEvents = async (limit = 3) => {
   return upcoming.filter((e) => !e.isFree && !isFoodEvent(e.name)).slice(0, limit);
 };
 
-export const buildWelcomeEmail = ({ name, returning = false, events }) => {
+export const buildWelcomeEmail = ({ name, returning = false, events, deadline = welcomeDeadline(new Date()) }) => {
+  const useBy = welcomeDeadlineLabel(deadline);
   const code = returning ? BACK_CODE : FIRST_CODE;
   const allEvents = `${SITE_URL}/events${code ? `?code=${code}` : ""}`;
   const list = events.length
@@ -70,10 +71,10 @@ export const buildWelcomeEmail = ({ name, returning = false, events }) => {
   const offer = returning
     ? `<p>It's good to have you back! As a thank-you for coming out with us before, here's <strong>10% off your next order</strong>:</p>
        ${codeBox}
-       <p style="font-size:14px;color:#555;margin-top:0;">Good for one order, any event that doesn't include food. Can't be combined with the multi-event discount. The links below add the code for you.</p>`
+       <p style="font-size:14px;color:#555;margin-top:0;"><strong>Use it by ${useBy}.</strong> Good for one order, any event that doesn't include food. Can't be combined with the multi-event discount. The links below add the code for you.</p>`
     : `<p>We'd love for you to join us at an event. Here's <strong>$5 off a ticket</strong> to get you in the room:</p>
        ${codeBox}
-       <p style="font-size:14px;color:#555;margin-top:0;">Good for one ticket to any event that doesn't include food, for your first GFC ticket. Can't be combined with the multi-event discount. The links below add the code for you.</p>`;
+       <p style="font-size:14px;color:#555;margin-top:0;"><strong>Use it by ${useBy}.</strong> Good for one ticket to any event that doesn't include food, for your first GFC ticket. Can't be combined with the multi-event discount. The links below add the code for you.</p>`;
 
   const html = `
   <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:620px;">
@@ -98,8 +99,8 @@ export const buildWelcomeEmail = ({ name, returning = false, events }) => {
       : "Welcome to Grown Folks™ Collective! Thank you for joining us. We host game nights, Karaoke Bingo, live music and more for Atlanta's 30+ crowd, all alcohol-free, all about good people and real connection.",
     "",
     returning
-      ? `It's good to have you back! As a thank-you for coming out with us before, here's 10% off your next order: ${code}\nGood for one order, any event that doesn't include food. Can't be combined with the multi-event discount.`
-      : `We'd love for you to join us at an event. Here's $5 off a ticket to get you in the room: ${code}\nGood for one ticket to any event that doesn't include food, for your first GFC ticket. Can't be combined with the multi-event discount.`,
+      ? `It's good to have you back! As a thank-you for coming out with us before, here's 10% off your next order: ${code}\nUse it by ${useBy}. Good for one order, any event that doesn't include food. Can't be combined with the multi-event discount.`
+      : `We'd love for you to join us at an event. Here's $5 off a ticket to get you in the room: ${code}\nUse it by ${useBy}. Good for one ticket to any event that doesn't include food, for your first GFC ticket. Can't be combined with the multi-event discount.`,
     "",
     `See upcoming events: ${allEvents}`,
     ...(events.length ? ["", "Coming up next:", ...events.map((e) => `- ${e.name}, ${when(e.date)}: ${eventUrl(e, code)}`)] : []),
@@ -129,7 +130,7 @@ export const sendWelcomeEmail = async (subscriber) => {
     if (!mailer || !subscriber?.email || subscriber.welcomeSentAt) return false;
     if (await isOptedOut(subscriber.email)) return false;
     const [boughtBefore, events] = await Promise.all([hasBoughtBefore(subscriber.email), nextEvents()]);
-    const email = buildWelcomeEmail({ name: subscriber.fullName, returning: boughtBefore, events });
+    const email = buildWelcomeEmail({ name: subscriber.fullName, returning: boughtBefore, events, deadline: welcomeDeadline(subscriber.welcomeSentAt || new Date()) });
     const { error } = await mailer.emails.send({
       from: "Vaughn | Grown Folks Collective <community@grownfolkscollective.com>",
       to: subscriber.email,
