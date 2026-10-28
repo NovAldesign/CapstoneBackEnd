@@ -226,7 +226,7 @@ export const sendCardToRecipient = async (card) => {
     ? `<div style="border-left:4px solid #C5A059;background:#FFFFFF;padding:14px 18px;margin:0 0 20px;font-family:Georgia,serif;font-size:17px;color:#0E2340;font-style:italic;">“${escapeHtml(card.message)}”<br/><span style="font-family:Arial,sans-serif;font-style:normal;font-size:14px;color:#666;">— ${escapeHtml(from)}</span></div>`
     : "";
   const intro = card.isGift
-    ? `<strong>${escapeHtml(from)}</strong> sent you a night out with Grown Folks™ Collective, Atlanta's alcohol-free social club for the 30+ crowd. Game nights, Karaoke Bingo and live music, with good people and no pressure.`
+    ? `<strong>${escapeHtml(from)}</strong> sent you a night out with Grown Folks™ Collective, Atlanta's hosted, alcohol-free space where the 30+ crowd connects for real. Game nights, Karaoke Bingo and live music, with good people and no pressure.`
     : card.kind === "bonus"
       ? "Thanks for gifting a night out on Cyber Monday. Here's a little something for you."
       : "Thanks for your order. Here's your code. Keep this email.";
