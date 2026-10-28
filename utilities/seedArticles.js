@@ -353,7 +353,7 @@ ${signup}
 
 <p>We host alcohol-free nights for adults 30 and up in Atlanta: game nights, Karaoke Bingo and Acoustic &amp; Infused&trade;, our live music showcase. Most people come solo and leave knowing names. Nobody leads with what they do for a living. We just want to know you.</p>
 
-<figure class="gfc-photo"><img src="${img("karaoke-bingo-room.jpg")}" alt="A full room of guests playing Karaoke Bingo" width="1032" height="1343" /><figcaption>A full room at Karaoke Bingo</figcaption></figure>
+<figure class="gfc-photo"><img src="${img("karaoke-bingo-room.jpg")}" alt="A full room of guests at Grown Folks Game Night" width="1032" height="1343" /><figcaption>A full room at Game Night</figcaption></figure>
 
 <p class="gfc-pull">It's fun, and it's also good for you.</p>
 
@@ -385,6 +385,12 @@ ${signup}
 
 const POSTS = [fridayNight, fallMugs, meetPeople, loneliness];
 
+// [slug, old text, new text]
+const FIXES = [
+  ["health-effects-of-loneliness", "A full room of guests playing Karaoke Bingo", "A full room of guests at Grown Folks Game Night"],
+  ["health-effects-of-loneliness", "A full room at Karaoke Bingo", "A full room at Game Night"],
+];
+
 // Adds any post that isn't in the database yet. Never changes an existing post.
 export const seedArticles = async () => {
   let added = 0;
@@ -399,6 +405,11 @@ export const seedArticles = async () => {
       { upsert: true }
     );
     if (res.upsertedCount) added++;
+  }
+  // One-time text fixes for posts that were already added (only runs if the old text is still there)
+  for (const [slug, from, to] of FIXES) {
+    const doc = await Article.findOne({ slug, content: { $regex: from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") } }, { content: 1 }).catch(() => null);
+    if (doc) await Article.updateOne({ _id: doc._id }, { $set: { content: doc.content.split(from).join(to) } });
   }
   if (added) console.log(`📝 Added ${added} blog post(s)`);
   return added;
