@@ -49,10 +49,15 @@ router.post("/", async (req, res) => {
   } catch (error) {
     if (error.code === 11000) {
       maybeJoinSelect(req.body); // already on the newsletter, but now wants Select news
+      const existing = req.body.email
+        ? await Subscriber.findOne({ email: String(req.body.email).trim().toLowerCase() }).catch(() => null)
+        : null;
       // Already on the guest list but signing up as a planner: still send the planner savings
-      if (isCorporate(req.body.source) && req.body.email) {
-        const existing = await Subscriber.findOne({ email: String(req.body.email).trim().toLowerCase() }).catch(() => null);
+      if (isCorporate(req.body.source)) {
         if (existing && !existing.plannerCode) sendPlannerWelcome(existing);
+      } else if (existing && !existing.welcomeSentAt) {
+        // On the list but never got their $5 welcome (e.g. added before it existed): send it now, once
+        sendWelcomeEmail(existing);
       }
       return res.status(400).json({ error: "This email address is already subscribed." });
     }
