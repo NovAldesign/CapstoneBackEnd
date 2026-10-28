@@ -298,7 +298,92 @@ ${signup}
   };
 })();
 
-const POSTS = [fridayNight, fallMugs, meetPeople];
+const loneliness = (() => {
+  const slug = "health-effects-of-loneliness";
+  const img = (f) => IMG(slug, f);
+  const signup = `<div data-gfc-signup></div>`;
+  const ap = "https://abc17news.com/news/ap-national-news/2023/05/02/loneliness-poses-risks-as-deadly-as-smoking-surgeon-general/";
+  const naco = "https://www.naco.org/news/us-surgeon-general-releases-advisory-and-national-strategy-advance-social-connection";
+
+  const content = `
+<p class="gfc-lede">If you've felt lonely lately, you're in good company.</p>
+
+<p>About <strong>half of U.S. adults</strong> say they've felt it. It doesn't matter if you're 32 or 62, single or married, new to Atlanta or here your whole life. Loneliness shows up for all kinds of people.</p>
+
+<p>Here's what most people don't know: it isn't only a feeling. It affects your body, too.</p>
+
+<h2>What loneliness does to your health</h2>
+
+<p>In 2023, the U.S. Surgeon General called loneliness and isolation a public health concern and laid out what the research shows. People who lack social connection have:</p>
+
+<ul>
+  <li><strong>29% higher risk of heart disease</strong></li>
+  <li><strong>32% higher risk of stroke</strong></li>
+  <li><strong>About 50% higher risk of dementia</strong> in older adults</li>
+  <li><strong>Twice the likelihood</strong> of depression and anxiety</li>
+  <li><strong>Nearly 30% higher risk</strong> of dying early</li>
+</ul>
+
+<p>The advisory also said the health risk of being disconnected is <strong>comparable to smoking up to 15 cigarettes a day</strong>.</p>
+
+<p class="gfc-pull">That's a lot to take in. Now for the good news.</p>
+
+<h2>The fix feels good</h2>
+
+<p>The same research that shows the risk also points to the answer: <strong>regular, real-life connection</strong>. That means seeing the same faces, laughing at the same table and having somewhere to be on a Friday night.</p>
+
+<p>You don't need a big friend group overnight. You need a place to start and a reason to come back. Small, steady moments add up:</p>
+
+<ul>
+  <li><strong>A standing plan.</strong> One night a month you don't skip.</li>
+  <li><strong>Shared activities.</strong> Games, music and anything that gets people talking without trying.</li>
+  <li><strong>Showing up solo.</strong> That's where new people actually meet you.</li>
+  <li><strong>Following up.</strong> A quick "good seeing you" text keeps it going.</li>
+</ul>
+
+<p>Want the full playbook? Read <a href="${SITE}/blog/how-to-meet-people-in-your-30s-atlanta">How to Meet People in Your 30s and Up in Atlanta, in Real Life</a>.</p>
+
+${signup}
+
+<h2>Why we do this</h2>
+
+<p>Our mission at <strong>Grown Folks&trade; Collective</strong> is simple: ending social isolation one event at a time.</p>
+
+<figure class="gfc-photo gfc-photo-wide"><img src="${img("crew.jpg")}" alt="A group of Grown Folks Collective guests smiling together in Atlanta" width="1740" height="1145" /><figcaption>The crew, out together</figcaption></figure>
+
+<p>We host alcohol-free nights for adults 30 and up in Atlanta: game nights, Karaoke Bingo and Acoustic &amp; Infused&trade;, our live music showcase. Most people come solo and leave knowing names. Nobody leads with what they do for a living. We just want to know you.</p>
+
+<figure class="gfc-photo"><img src="${img("karaoke-bingo-room.jpg")}" alt="A full room of guests playing Karaoke Bingo" width="1032" height="1343" /><figcaption>A full room at Karaoke Bingo</figcaption></figure>
+
+<p class="gfc-pull">It's fun, and it's also good for you.</p>
+
+<p class="gfc-details-cta"><a class="gfc-button" href="${SITE}/events?src=blog">See upcoming events</a></p>
+
+${signup}
+
+<p class="gfc-note"><em>If you're feeling more than lonely, or things feel heavy, you don't have to carry it alone. Talk with your doctor or someone you trust, or call or text <strong>988</strong>, the Suicide &amp; Crisis Lifeline, any time.</em></p>
+
+<p class="gfc-source"><em>Sources: U.S. Surgeon General, "Our Epidemic of Loneliness and Isolation" (2023), via <a href="${ap}" target="_blank" rel="noopener noreferrer">AP</a> and <a href="${naco}" target="_blank" rel="noopener noreferrer">NACo</a>.</em></p>
+
+<p class="gfc-closer">Vaughn, Grown Folks&trade; Collective<br/><em>Where grown folks come out to play.&trade;</em></p>
+`.trim();
+
+  return {
+    title: "The Health Effects of Loneliness, and the Simple Fix: Your People",
+    slug,
+    category: "Connection",
+    excerpt:
+      "Loneliness affects your heart, your mind and even how long you live. Here's what the research says, and the simple, feel-good way grown folks in Atlanta are turning it around.",
+    imageUrl: img("cover.jpg"),
+    imageAlt: "A big, smiling group of Grown Folks Collective guests at Karaoke Bingo in Atlanta",
+    imageCaption: "Grown folks at Karaoke Bingo, Atlanta",
+    pinImageUrl: img("pin.jpg"),
+    publishedAt: new Date("2026-10-29T08:00:00-04:00"),
+    content,
+  };
+})();
+
+const POSTS = [fridayNight, fallMugs, meetPeople, loneliness];
 
 // Adds any post that isn't in the database yet. Never changes an existing post.
 export const seedArticles = async () => {
@@ -310,7 +395,7 @@ export const seedArticles = async () => {
     const post = { ...raw, content: raw.content.replace("{{WINTER_WARMERS}}", warmersUrl) };
     const res = await Article.updateOne(
       { slug: post.slug },
-      { $setOnInsert: { ...post, publishedAt: new Date() } },
+      { $setOnInsert: { ...post, publishedAt: post.publishedAt || new Date() } }, // a post can set a future publish time
       { upsert: true }
     );
     if (res.upsertedCount) added++;
