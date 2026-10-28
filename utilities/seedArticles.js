@@ -219,7 +219,86 @@ ${photo("sweet-potato-hot-chocolate.jpg", "Sweet potato hot chocolate topped wit
   };
 })();
 
-const POSTS = [fridayNight, fallMugs];
+const meetPeople = (() => {
+  const slug = "how-to-meet-people-in-your-30s-atlanta";
+  const img = (f) => IMG(slug, f);
+  const signup = `<div data-gfc-signup></div>`;
+
+  const content = `
+<p class="gfc-lede">You used to make friends without trying.</p>
+
+<p>Class, the dorm, the job where everybody was new at the same time. Then life got full. People married, moved, had kids, changed careers. Now it's Friday, your phone is quiet, and you're wondering where everybody went.</p>
+
+<p>You're not the only one. Plenty of grown folks in Atlanta, from their 30s to their 60s, are looking for the same thing you are: good people to spend real time with.</p>
+
+<h2>Friendship takes time, and that's good news</h2>
+
+<p>A University of Kansas study found it takes about <strong>50 hours</strong> together to go from acquaintance to casual friend, and <strong>more than 200 hours</strong> to become close friends. Nobody becomes your best friend in one night. They become your friend because you keep showing up in the same room.</p>
+
+<p class="gfc-pull">So the question isn't "Where do I go once?" It's "Where can I go again and again?"</p>
+
+<figure class="gfc-photo gfc-photo-wide"><img src="${img("friends-laughing.jpg")}" alt="A group of friends in their 30s, 40s and 50s laughing together" width="1200" height="800" /><figcaption>Friendship grows with time together.</figcaption></figure>
+
+<h2>6 ways to meet people in your 30s and up</h2>
+
+<h3>1. Pick something that repeats</h3>
+<p>One-time events are fun, but monthly or weekly ones are where friendships grow. The second time you see someone, you're not strangers anymore.</p>
+
+<h3>2. Go solo. Really.</h3>
+<p>Walking in alone feels big, but it's the fastest way to meet people. When you come with your crew, you talk to your crew. When you come solo, you talk to the room.</p>
+
+<h3>3. Choose nights with something built in to do</h3>
+<p>Games, music and team activities give you something to talk about right away. Nobody has to come up with an opening line when it's your turn at the spades table.</p>
+
+<h3>4. Lead with you, not your job title</h3>
+<p>"What do you do?" closes a conversation fast. Try "What brought you out tonight?" or "Where are you from originally?" instead.</p>
+
+${signup}
+
+<h3>5. Follow up within a day</h3>
+<p>Met someone you clicked with? Send the text the next morning: "Great meeting you last night. Coming to the next one?" That one message turns a moment into a friendship.</p>
+
+<h3>6. Say yes to the second invite</h3>
+<p>The first night is a hello. The second one is where it starts to feel like your people.</p>
+
+<h2>Where to start this week</h2>
+
+<p>That's why we built <strong>Grown Folks&trade; Collective</strong>, a hosted, alcohol-free night out for adults 30 and up in Atlanta. Game nights. Karaoke Bingo. <strong>Acoustic &amp; Infused&trade;</strong>, our live music showcase, where you can sit close to the stage and the room actually listens.</p>
+
+<figure class="gfc-photo gfc-photo-wide"><img src="${img("cover.jpg")}" alt="A big, smiling group of Grown Folks Collective guests at Karaoke Bingo in Atlanta" width="1600" height="900" /><figcaption>The crew at Karaoke Bingo</figcaption></figure>
+
+<p>Most people come solo and leave knowing names. Nobody leads with what they do for a living. We just want to know you. Some guests drive in from Monroe, Villa Rica and Buford, and we've sold out five nights so far.</p>
+
+<h2>Your first night, made easy</h2>
+
+<p>Not sure what to expect? You walk in and someone welcomes you. There's something to do and something to listen to, so there's no awkward standing around. By the end of the night, you'll know a few faces, and you'll want to come back.</p>
+
+<p>That's how it starts. One night, then the next one, then the next. Before long, those 50 hours add up to real friends.</p>
+
+<p class="gfc-details-cta"><a class="gfc-button" href="${SITE}/events?src=blog">See upcoming events</a></p>
+
+${signup}
+
+<p class="gfc-source"><em>Source: Hall, J. A. (2018). "How many hours does it take to make a friend?" Journal of Social and Personal Relationships.</em></p>
+
+<p class="gfc-closer">Vaughn, Grown Folks&trade; Collective<br/><em>Where grown folks come out to play.&trade;</em></p>
+`.trim();
+
+  return {
+    title: "How to Meet People in Your 30s and Up in Atlanta, in Real Life",
+    slug,
+    category: "Connection",
+    excerpt:
+      "Making friends as a grown adult takes more than one night out. Here's how to meet people in your 30s, 40s and beyond in Atlanta, and where to start this week.",
+    imageUrl: img("cover.jpg"),
+    imageAlt: "A big, smiling group of Grown Folks Collective guests at Karaoke Bingo in Atlanta",
+    imageCaption: "Grown folks at Karaoke Bingo, Atlanta",
+    pinImageUrl: img("pin.jpg"),
+    content,
+  };
+})();
+
+const POSTS = [fridayNight, fallMugs, meetPeople];
 
 // Adds any post that isn't in the database yet. Never changes an existing post.
 export const seedArticles = async () => {
