@@ -15,6 +15,7 @@ import { protect, restrictTo } from "../middleware/authMiddleware.js";
 // POST /speakers  — Public. Speaker application (authors, professors, therapists, coaches…).
 // GET  /admin     — Admin. Speaker applications + interest list.
 // PATCH /admin/speakers/:id — Admin. Status and private notes.
+// DELETE /admin/speakers/:id, /admin/interest/:id — Admin. Remove a test or unwanted entry.
 const router = express.Router();
 const resend = mailer; // shared sender: spaced out, retried, failures logged
 
@@ -208,5 +209,18 @@ router.patch("/admin/speakers/:id", admin, async (req, res) => {
     res.status(500).json({ error: "Couldn't save." });
   }
 });
+
+const removeOne = (Model) => async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Not found." });
+    const gone = await Model.findByIdAndDelete(req.params.id).lean();
+    if (!gone) return res.status(404).json({ error: "Not found." });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Couldn't delete." });
+  }
+};
+router.delete("/admin/speakers/:id", admin, removeOne(RecessSpeaker));
+router.delete("/admin/interest/:id", admin, removeOne(RecessInterest));
 
 export default router;

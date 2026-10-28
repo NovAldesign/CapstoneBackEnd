@@ -4,6 +4,7 @@ import path from "path";
 import Membership from "../models/membershipSchema.js";
 import Admin from "../models/adminSchema.js";
 import Partnership from "../models/partnershipSchema.js";
+import MemberCredit from "../models/memberCreditSchema.js";
 import upload from "../utilities/upload.js"; 
 import { membershipData, adminData, partnershipData } from "../utilities/data.js";
 
@@ -114,10 +115,43 @@ router.route("/membership/:id")
     })
     .delete(async (req, res, next) => {
         try {
-            await Membership.findByIdAndDelete(req.params.id);
+            const { deleted, blocked } = await deleteMembers([req.params.id]);
+            if (blocked.length) return res.status(409).json({ error: blocked[0].reason });
+            if (!deleted.length) return res.status(404).json({ error: "Member not found." });
             res.json({ message: "Record deleted" });
         } catch (err) { next(err); }
     });
+
+// Delete several members at once. Body: { ids: [...] } or { allTest: true }
+router.post("/membership/bulk-delete", async (req, res, next) => {
+    try {
+        let ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).slice(0, 500) : [];
+        if (req.body?.allTest) ids = (await Membership.find({ isTest: true }).select("_id").lean()).map((m) => String(m._id));
+        if (!ids.length) return res.status(400).json({ error: "Pick at least one member." });
+        res.json(await deleteMembers(ids));
+    } catch (err) { next(err); }
+});
+
+// Removes members and their credit. Won't remove a real member who is still
+// being billed in Stripe (cancel them in Stripe first), so nobody keeps paying
+// for a membership that no longer exists here.
+async function deleteMembers(ids) {
+    const valid = ids.filter((id) => /^[a-f0-9]{24}$/i.test(id));
+    const members = await Membership.find({ _id: { $in: valid } }).select("firstName lastName email status isTest stripeSubscriptionId").lean();
+    const deleted = [];
+    const blocked = [];
+    for (const m of members) {
+        const billing = !m.isTest && m.stripeSubscriptionId && ["active", "paused"].includes(m.status);
+        if (billing) {
+            blocked.push({ id: String(m._id), name: `${m.firstName} ${m.lastName}`.trim(), reason: `${m.firstName} ${m.lastName} still has a paid membership in Stripe. Cancel it in Stripe first, then remove them here.` });
+            continue;
+        }
+        await MemberCredit.deleteMany({ member: m._id });
+        await Membership.deleteOne({ _id: m._id });
+        deleted.push(String(m._id));
+    }
+    return { deleted, blocked };
+}
 
 // --- 4. PARTNERSHIP / SPONSOR ROUTES ---
 router.route("/partnerships")
