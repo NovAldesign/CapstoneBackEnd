@@ -3,6 +3,7 @@ import Subscriber from "../models/subscriberSchema.js";
 import { sendWelcomeEmail } from "../utilities/welcomeEmail.js";
 import { sendPlannerWelcome } from "../utilities/hostingSpecials.js";
 import { joinSelectFromNewsletter } from "./selectRoutes.js";
+import { hasBoughtBefore } from "../utilities/promoCodes.js";
 
 const router = express.Router();
 
@@ -45,7 +46,11 @@ router.post("/", async (req, res) => {
     if (isCorporate(newSubscriber.source)) sendPlannerWelcome(newSubscriber);
     else sendWelcomeEmail(newSubscriber);
     maybeJoinSelect(req.body);
-    return res.status(201).json({ message: "Successfully subscribed!" });
+    // Hand the welcome code back so the site can put it in their bag right away
+    const code = isCorporate(newSubscriber.source)
+      ? undefined
+      : (await hasBoughtBefore(newSubscriber.email).catch(() => false)) ? "WELCOMEBACK10" : "WELCOME5";
+    return res.status(201).json({ message: "Successfully subscribed!", code });
   } catch (error) {
     if (error.code === 11000) {
       maybeJoinSelect(req.body); // already on the newsletter, but now wants Select news
