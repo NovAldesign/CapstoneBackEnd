@@ -378,7 +378,7 @@ ${signup}
     imageAlt: "A big, smiling group of Grown Folks Collective guests at Karaoke Bingo in Atlanta",
     imageCaption: "Grown folks at Karaoke Bingo, Atlanta",
     pinImageUrl: img("pin.jpg"),
-    publishedAt: new Date("2026-10-29T08:00:00-04:00"),
+    publishedAt: new Date("2027-01-01T08:00:00-05:00"), // on hold until new photos; set the real date in the dashboard
     content,
   };
 })();
@@ -413,6 +413,11 @@ export const seedArticles = async () => {
     const doc = await Article.findOne({ slug, content: { $regex: from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") } }, { content: 1 }).catch(() => null);
     if (doc) await Article.updateOne({ _id: doc._id }, { $set: { content: doc.content.split(from).join(to) } });
   }
+  // On hold: the loneliness post was first scheduled for Oct 29, 8 AM. Push it out until it's rescheduled.
+  await Article.updateOne(
+    { slug: "health-effects-of-loneliness", publishedAt: new Date("2026-10-29T08:00:00-04:00") },
+    { $set: { publishedAt: new Date("2027-01-01T08:00:00-05:00") } }
+  ).catch(() => null);
   if (added) console.log(`📝 Added ${added} blog post(s)`);
   return added;
 };
