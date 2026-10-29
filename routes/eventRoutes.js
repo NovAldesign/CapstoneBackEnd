@@ -1114,8 +1114,7 @@ const syncEventbriteEvent = async (eventId, TOKEN) => {
     ...(!existingEvent?.highlights?.length && highlightsFromEvent.length   && { highlights: highlightsFromEvent }),
     ...(!existingEvent?.faqs?.length && {
       faqs: [
-        { question: "What is your refund policy?", answer: "All sales are final. Tickets are non-refundable but may be transferred to another eligible guest up to 24 hours before the event." },
-        { question: "Can I transfer my ticket?",   answer: "Yes. Entry passes can be transferred to another verified individual up to 24 hours prior to the event start time." }
+        { question: "What is your refund policy? Can I transfer my ticket?", answer: "Tickets are final, but you can transfer yours to someone else (30+) up to 24 hours before the event by emailing community@grownfolkscollective.com. If we cancel, you get a full refund." }
       ]
     }),
 

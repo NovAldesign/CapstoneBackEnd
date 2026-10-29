@@ -152,7 +152,7 @@ const EventSchema = new mongoose.Schema(
 
     refundPolicy: {
       type:    String,
-      default: "All Sales Final. Due to curated arrangements, advance catering, and venue partnership commitments, individual tickets are non-refundable. Pass entries can be transferred to another qualified individual up to 24 hours prior to the experience."
+      default: "Tickets are final, but you can transfer yours to someone else (30+) up to 24 hours before the event by emailing community@grownfolkscollective.com. If we cancel, you get a full refund."
     },
 
     capacity: {
