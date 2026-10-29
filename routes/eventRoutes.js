@@ -112,7 +112,7 @@ const parseAgenda = (structuredData) => {
 const parseHighlights = (eventData) => {
   const highlights = [];
   if (eventData.format?.name)  highlights.push(eventData.format.name);
-  if (eventData.is_free)       highlights.push('Free Admission');
+  // No "Free Admission" from Eventbrite: it flags paid events as free when they have free (scout/comp) tickets
   if (!eventData.online_event) highlights.push('In Person');
   if (eventData.capacity)      highlights.push(`Limited to ${eventData.capacity} guests`);
   return highlights;
