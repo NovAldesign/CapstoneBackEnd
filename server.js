@@ -37,6 +37,7 @@ import artistRoutes from "./routes/artistRoutes.js"; // Artist applications + Me
 import goRoutes from "./routes/goRoutes.js"; // Counts clicks on /go/<code> short links
 import liveRoutes from "./routes/liveRoutes.js"; // Artists pick their Instagram/TikTok Live date (/live-setup)
 import scoutRoutes from "./routes/scoutRoutes.js"; // Industry scout sign-ups (/scouts)
+import djRoutes from "./routes/djRoutes.js"; // DJ list for Scratched & Stirred (/perform/dj)
 import hostingRoutes from "./routes/hostingRoutes.js"; // Play. Sip. Toast. hosting requests (/host page)
 import reviewRoutes from "./routes/reviewRoutes.js"; // Guest reviews for the home page
 import siteStatsRoutes from "./routes/siteStatsRoutes.js"; // Ratings + follower counts shown on the site
@@ -150,6 +151,7 @@ app.use("/api/artists", artistRoutes);
 app.use("/api/lives", liveRoutes);
 app.use("/api/go", goRoutes);
 app.use("/api/scouts", scoutRoutes);
+app.use("/api/djs", djRoutes);
 app.use("/api/hosting", hostingRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/site-stats", siteStatsRoutes);

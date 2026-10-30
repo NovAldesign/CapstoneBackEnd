@@ -18,6 +18,7 @@ import Review from "../models/reviewSchema.js";
 import SelectApplication from "../models/selectApplicationSchema.js";
 import Subscriber from "../models/subscriberSchema.js";
 import Scout from "../models/scoutSchema.js";
+import DjApplication from "../models/djApplicationSchema.js";
 import Membership from "../models/membershipSchema.js";
 import CrmProfile from "../models/crmProfileSchema.js";
 import { PROMO_CODES, normalizeCode, describePromo, isLive, codeExists } from "../utilities/promoCodes.js";
@@ -672,6 +673,17 @@ router.get("/scouts", async (req, res) => {
   } catch (err) {
     console.error("Admin scouts error:", err.message);
     res.status(500).json({ error: "Couldn't load scouts." });
+  }
+});
+
+// DJs (from /perform/dj) for Scratched & Stirred
+router.get("/djs", async (req, res) => {
+  try {
+    const items = await DjApplication.find().sort({ createdAt: -1 }).limit(5000).lean();
+    res.json({ items });
+  } catch (err) {
+    console.error("Admin DJs error:", err.message);
+    res.status(500).json({ error: "Couldn't load DJs." });
   }
 });
 
