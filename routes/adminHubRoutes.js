@@ -330,6 +330,8 @@ router.post("/applications/:id/roster", async (req, res) => {
     if (application.status === "approved" && oldEventId) {
       application.history.push({ eventId: oldEventId, eventName: application.eventName || event?.name || "", note });
       // Their ticket code for that show stops working (sales so far stay on record)
+      // A code shared with another show they're booked for just drops this show
+      await PromoCode.updateMany({ code: application.promoCode, eventIds: oldEventId, "eventIds.1": { $exists: true } }, { $pull: { eventIds: oldEventId } });
       await PromoCode.updateMany({ artistId: String(application._id), eventIds: oldEventId }, { active: false });
       application.promoCode = "";
       application.bookingEmailSentAt = null;
@@ -362,9 +364,21 @@ router.post("/applications/:id/approve", async (req, res) => {
   try {
     let application = await findApplication(req.params.id);
     if (!application) return res.status(404).json({ error: "Application not found." });
-    if (application.status === "approved" && isId(application.eventId)) {
-      const current = await Event.findById(application.eventId).select("date").lean();
-      if (current && new Date(current.date) < new Date()) application = await copyForRebooking(application);
+    // Already booked for a different show (past or upcoming): make a new booking so the
+    // first one stays as it is. Re-booking the same show just updates it.
+    const wanted = String(req.body?.eventId || "");
+    if (application.status === "approved" && isId(application.eventId) && wanted && wanted !== String(application.eventId)) {
+      const current = await Event.findById(application.eventId).select("_id").lean();
+      if (current) {
+        const already = await ArtistApplication.findOne({
+          email: application.email,
+          role: (application.role || "artist") === "artist" ? { $in: ["artist", null] } : application.role,
+          eventId: wanted,
+          status: "approved",
+        }).select("_id").lean();
+        if (already) return res.status(400).json({ error: `${application.artistName} is already booked for that show.` });
+        application = await copyForRebooking(application);
+      }
     }
     const result = await approveApplication(application, {
       eventId: req.body?.eventId,

@@ -599,6 +599,15 @@ router.get("/:id/review", async (req, res) => {
   }
 });
 
+// Is this saved artist code theirs? (made for this booking, or an earlier booking with the same email)
+const ownsArtistCode = async (promo, application) => {
+  if (!promo?._id || promo.source !== "artist" || !promo.artistId) return false;
+  if (String(promo.artistId) === String(application._id)) return true;
+  if (!mongoose.Types.ObjectId.isValid(promo.artistId)) return false;
+  const owner = await ArtistApplication.findById(promo.artistId).select("email").lean();
+  return Boolean(owner?.email) && owner.email.toLowerCase() === String(application.email || "").toLowerCase();
+};
+
 // Approve (book) an artist or host for a showcase. Used by the email link and the dashboard.
 // Returns { ok, status, error, event, code, link, emailNote }
 export const approveApplication = async (application, { eventId: wantedEventId, code: wantedCode, sendEmail } = {}) => {
@@ -618,7 +627,18 @@ export const approveApplication = async (application, { eventId: wantedEventId, 
   if (existing) {
     const live = await findPromoCode(code);
     if (!live || !promoAppliesToEvent(live, event)) {
-      return { ok: false, status: 400, error: `${code} is already used for something else. Please pick a different code.` };
+      // Their own code from another show: add this show to it so they keep the same code
+      if (!(await ownsArtistCode(existing, application))) {
+        return { ok: false, status: 400, error: `${code} is already used for something else. Please pick a different code.` };
+      }
+      const lastDay = ymd(event.date);
+      await PromoCode.updateOne(
+        { _id: existing._id },
+        {
+          $addToSet: { eventIds: String(event._id) },
+          $set: { active: true, expires: existing.expires && existing.expires > lastDay ? existing.expires : lastDay },
+        }
+      );
     }
   } else {
     try {
