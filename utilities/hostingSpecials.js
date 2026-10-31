@@ -7,8 +7,8 @@ import Subscriber from "../models/subscriberSchema.js";
 // Hosting (Play. Sip. Toast.) savings for companies and property managers
 //
 // 1. Booking specials, one at a time, by date (Eastern):
-//      Holiday:  book a December event by Oct 31, save $150
-//      New Year: book a January or February event by Nov 30, save $125
+//      Holiday:  book a December event by Nov 14, save $150
+//      New Year: book a January or February event Nov 15 to Nov 30, save $125
 //    The frontend shows the same list (src/content/hostingPackages.js).
 //
 // 2. Planner signup savings: join the corporate list (footer signup, source "corporate")
@@ -31,15 +31,15 @@ export const HOSTING_SPECIALS = [
     title: "Holiday Booking Special",
     amount: 150,
     covers: "a December event",
-    endsLabel: "Oct 31",
-    endsAt: new Date("2026-10-31T23:59:59-04:00"),
+    endsLabel: "Nov 14",
+    endsAt: new Date("2026-11-14T23:59:59-05:00"),
   },
   {
     id: "newyear",
     title: "New Year Booking Special",
     amount: 125,
     covers: "a January or February event",
-    startsAt: new Date("2026-11-01T00:00:00-04:00"),
+    startsAt: new Date("2026-11-15T00:00:00-05:00"),
     endsLabel: "Nov 30",
     endsAt: new Date("2026-11-30T23:59:59-05:00"),
   },
