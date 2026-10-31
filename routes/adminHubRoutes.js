@@ -255,6 +255,18 @@ router.get("/showcases", async (req, res) => {
     };
 
     const eventIds = new Set(events.map((e) => String(e._id)));
+    // Real tickets per show (website + Eventbrite + door/added by hand), not just Eventbrite's count
+    const realSold = new Map(
+      (await mapLimit(events, 4, async (e) => {
+        try {
+          const list = await buildGuestList(e);
+          return [String(e._id), list.totals.tickets];
+        } catch {
+          return [String(e._id), null];
+        }
+      })).filter(([, n]) => n !== null)
+    );
+    const soldOf = (e) => (realSold.has(String(e._id)) ? realSold.get(String(e._id)) : soldFor(e));
     res.json({
       payPerTicket: PAY_PER_TICKET,
       payCap: PAY_CAP,
@@ -266,7 +278,7 @@ router.get("/showcases", async (req, res) => {
           name: e.name,
           date: e.date,
           past: new Date(e.date) < new Date(),
-          sold: soldFor(e),
+          sold: soldOf(e),
           capacity: capacityFor(e),
           eventbrite: Boolean(e.eventbriteId),
           // Empty copy (no tickets, nobody booked or applied): safe to remove
@@ -723,8 +735,10 @@ router.get("/events", async (req, res) => {
     const past = req.query.when === "past";
     const now = new Date();
     const dayAgo = new Date(Date.now() - DAY);
+    // Past = already started (tonight's show shows up right away). Upcoming keeps it for 24 hours too,
+    // so the door team can still check people in after it starts.
     const query = past
-      ? { status: { $nin: ["cancelled", "draft"] }, date: { $lt: dayAgo, $gte: new Date(Date.now() - 180 * DAY) } }
+      ? { status: { $nin: ["cancelled", "draft"] }, date: { $lt: now, $gte: new Date(Date.now() - 180 * DAY) } }
       : { status: { $nin: ["cancelled", "draft"] }, date: { $gte: dayAgo } };
     const events = await Event.find(query).sort({ date: past ? -1 : 1 }).limit(60)
       .select("name date capacity ticketTypes status eventbriteId location").lean();
